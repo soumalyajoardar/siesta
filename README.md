@@ -38,6 +38,29 @@ To move to Supabase (free tier works):
   uploads every referenced local photo to Supabase Storage and rewrites the
   URLs (backups first, skips missing files with a report, safe to re-run).
 
+## Deploy to Vercel (public link, free)
+
+Your store + admin run serverlessly; Supabase holds the data (local JSON
+files can't persist on Vercel, so the Supabase setup above is required first).
+
+1. Push the project to GitHub, then https://vercel.com →
+   **Add New → Project** → import your repo. Framework preset: **Other**.
+   No build command, no output directory — leave both empty.
+2. **Settings → Environment Variables**, add all three (all environments):
+   - `SUPABASE_URL` = your Project URL
+   - `SUPABASE_SERVICE_KEY` = your secret/service key (never the anon key)
+   - `ADMIN_PASSWORD` = your admin password (required — e.g. your current one)
+3. **Deploy.** You get `https://siesta-xyz.vercel.app`:
+   - Store + `/admin` served worldwide over HTTPS by Vercel's CDN
+   - `/api/*` runs the same Express app as a function (Supabase backend,
+     stateless logins — verified to survive restarts/redeploys)
+4. Every `git push` redeploys automatically. Your data is safe: it lives in
+   Supabase, never in the deployment.
+
+Notes: cold starts add ~1–3s to the first request after idle (free tier);
+uploads go to Supabase Storage; the `images/` + `server/uploads/` folders are
+backups only and are not deployed.
+
 ## Admin dashboard (`/admin`)
 
 - **Overview** — revenue, order counts, low-stock alerts, recent orders

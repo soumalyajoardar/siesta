@@ -8,8 +8,16 @@ const { createClient } = require("@supabase/supabase-js");
 const BUCKET = "product-images";
 let client = null;
 
+// Accept both hand-set names and the names Vercel's Supabase integration injects.
+function getUrl() {
+  return process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+}
+function getKey() {
+  return process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+}
+
 function isConfigured() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+  return Boolean(getUrl() && getKey());
 }
 
 function getClient() {
@@ -19,7 +27,7 @@ function getClient() {
     throw err;
   }
   if (!client) {
-    client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    client = createClient(getUrl(), getKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
     });
   }
@@ -27,7 +35,7 @@ function getClient() {
 }
 
 function storageBase() {
-  return `${String(process.env.SUPABASE_URL).replace(/\/$/, "")}/storage/v1/object/public/${BUCKET}/`;
+  return `${getUrl().replace(/\/$/, "")}/storage/v1/object/public/${BUCKET}/`;
 }
 
 // Verify connectivity + schema (throws with a clear message otherwise).
@@ -87,4 +95,4 @@ async function deleteImage(name) {
   if (error) throw new Error(`Could not delete image: ${error.message}`);
 }
 
-module.exports = { isConfigured, checkConnection, dbLoad, dbSave, uploadImage, listImages, deleteImage, storageBase, BUCKET };
+module.exports = { isConfigured, getUrl, checkConnection, dbLoad, dbSave, uploadImage, listImages, deleteImage, storageBase, BUCKET };

@@ -5,6 +5,8 @@
 // - Public API re-validates prices, coupons and stock server-side (never trusts the client).
 // - Admin API (bearer token) manages products, images, orders, coupons, settings.
 // Run:  npm start   (or: PORT=3000 node server/index.cjs)
+// Hosting: `start()` boots a long-running server locally; on Vercel the
+// api/index.js wrapper reuses `app` as a serverless function instead.
 const path = require("path");
 const fs = require("fs");
 require("./env.cjs"); // load .env (if present) before anything reads config
@@ -13,19 +15,41 @@ const express = require("express");
 const multer = require("multer");
 const store = require("./store.cjs");
 const sbs = require("./supabase.cjs");
-const { verify, issueToken, requireAdmin, rateLimited, recordFailure } = require("./auth.cjs");
+const { verify, issueToken, requireAdmin, rateLimited, recordFailure, getAdminRecord } = require("./auth.cjs");
 
+const IS_VERCEL = Boolean(process.env.VERCEL);
 const ROOT = path.join(__dirname, "..");
 const UPLOAD_DIR = path.join(__dirname, "uploads");
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch { /* read-only serverless FS */ }
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 // Storefront data changes from the admin — never let browsers cache API JSON.
 app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 
-// Eagerly initialise the admin account so a first-run password is printed now.
-require("./auth.cjs").getAdminRecord();
+// On Vercel there is no persistent disk: Supabase is mandatory and every
+// /api call waits for one verified connection (then reuses it).
+let apiReady = null;
+function ensureApiReady() {
+  if (!apiReady) {
+    apiReady = (async () => {
+      if (store.backend() !== "supabase") {
+        const err = new Error("Supabase is required when hosted on Vercel: set SUPABASE_URL + SUPABASE_SERVICE_KEY in Vercel environment variables.");
+        err.status = 503;
+        throw err;
+      }
+      await sbs.checkConnection();
+      await store.migrateIfNeeded();
+    })().catch((e) => { apiReady = null; throw e; });
+  }
+  return apiReady;
+}
+if (IS_VERCEL) {
+  app.use("/api", async (req, res, next) => {
+    try { await ensureApiReady(); next(); }
+    catch (e) { res.status(e.status || 503).json({ error: e.message }); }
+  });
+}
 
 const STAGES = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
 const CATEGORIES = ["tshirts", "shirts", "jackets", "hoodies", "jeans", "pants", "shorts", "sweatshirts"];
@@ -35,7 +59,7 @@ const { getProducts, getCoupons, getOrders, getSettings, getEvents } = store;
 const notExpired = (c) => new Date(c.expires + "T23:59:59") >= new Date();
 const discountPct = (p) => (p.mrp > p.price ? Math.round((1 - p.price / p.mrp) * 100) : 0);
 // Allowed image locations: local uploads, project images folder, Supabase bucket.
-const storeImgBase = () => (process.env.SUPABASE_URL ? `${String(process.env.SUPABASE_URL).replace(/\/$/, "")}/storage/v1/object/public/product-images/` : "");
+const storeImgBase = () => (sbs.getUrl() ? `${sbs.getUrl().replace(/\/$/, "")}/storage/v1/object/public/product-images/` : "");
 const imgUrl = (u) => typeof u === "string" && (u.startsWith("/uploads/") || u.startsWith("/images/") || (storeImgBase() && u.startsWith(storeImgBase())));
 
 function sanitizeProduct(b, isNew) {
@@ -201,6 +225,9 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
 
 /* ---------------- admin auth ---------------- */
 app.post("/api/admin/login", (req, res) => {
+  if (IS_VERCEL && !process.env.ADMIN_PASSWORD) {
+    return res.status(503).json({ error: "Admin login is disabled: set ADMIN_PASSWORD in Vercel environment variables and redeploy." });
+  }
   const ip = req.ip;
   if (rateLimited(ip)) return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
   const { username, password } = req.body || {};
@@ -469,7 +496,7 @@ app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d" }));
 // Project images folder: drop JPG/PNG/WebP files here (via Explorer/Finder)
 // and reference them as /images/your-file.webp from any product.
 const IMAGES_DIR = path.join(ROOT, "images");
-fs.mkdirSync(IMAGES_DIR, { recursive: true });
+try { fs.mkdirSync(IMAGES_DIR, { recursive: true }); } catch { /* read-only serverless FS */ }
 app.use("/images", express.static(IMAGES_DIR, { maxAge: "7d" }));
 app.use("/admin", express.static(path.join(ROOT, "admin")));
 app.get("/admin", (req, res) => res.sendFile(path.join(ROOT, "admin", "index.html")));
@@ -497,8 +524,9 @@ function lanIP() {
 }
 
 async function start() {
-  // Seed local JSON on a truly fresh install (also the migration source).
-  if (!fs.existsSync(path.join(__dirname, "data", "products.json"))) {
+  // Seed local JSON on a truly fresh install (also the Supabase migration source).
+  // Skipped entirely on Vercel (read-only filesystem; Supabase is mandatory there).
+  if (store.backend() !== "supabase" && !fs.existsSync(path.join(__dirname, "data", "products.json"))) {
     console.log("Seeding database from storefront catalog…");
     execSync("node server/seed.js", { cwd: ROOT, stdio: "inherit" });
   }
@@ -518,10 +546,19 @@ async function start() {
   } else {
     console.log("Store backend: local JSON files (set SUPABASE_URL + SUPABASE_SERVICE_KEY to use Supabase)");
   }
+  // Eagerly initialise the admin account so a first-run password is printed now.
+  try {
+    getAdminRecord();
+  } catch (e) {
+    console.error(`\n  ADMIN WARNING: ${e.message}\n`);
+  }
   app.listen(PORT, HOST, () => {
     const ip = lanIP();
     console.log(`\n  SIESTA running [${store.backend()}] →  local:  http://localhost:${PORT}  (admin: /admin)`);
     console.log(`                                    phone:   http://${ip}:${PORT}  (same Wi-Fi)\n`);
   });
 }
-start();
+
+// `npm start` boots a server; Vercel imports { app } as a function instead.
+if (require.main === module) start();
+module.exports = { app, start };
