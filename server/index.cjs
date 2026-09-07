@@ -27,6 +27,18 @@ app.use(express.json({ limit: "1mb" }));
 // Storefront data changes from the admin — never let browsers cache API JSON.
 app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 
+// Safe diagnostic: which config the live deployment sees (names only, no secrets).
+app.get("/api/debug", (req, res) => {
+  res.json({
+    vercel: IS_VERCEL,
+    backend: store.backend(),
+    hasAdminPassword: Boolean(process.env.ADMIN_PASSWORD),
+    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+    hasSupabaseKey: Boolean(process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
+    node: process.version,
+  });
+});
+
 // On Vercel there is no persistent disk: Supabase is mandatory and every
 // /api call waits for one verified connection (then reuses it).
 let apiReady = null;
