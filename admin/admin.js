@@ -430,7 +430,8 @@
           const room = Math.max(0, 6 - sl.images.length);
           sl.images.push(...up.map((x) => x.url).slice(0, room));
           draw();
-          toast("Uploaded — remember to Save Homepage.");
+          await doSaveHomepage(true);
+          toast("Photo saved to the banner.");
         } catch (err) { toast(err.message, "error"); }
         sgal.value = "";
         return;
@@ -449,7 +450,7 @@
         ev.target.value = "";
       } else if (ev.target.matches("[data-url]")) {
         const u = ev.target.value.trim();
-        if (u && !/^\/(uploads|images)\/[^/]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/hero.webp", "error"); draw(); return; }
+        if (u && !/^(https:\/\/|\/(uploads|images)\/)[^?#\s]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/hero.webp", "error"); draw(); return; }
         set(kind, key, u);
         draw();
       }
@@ -460,7 +461,7 @@
         const block = add.closest(".slide-block");
         const sl = slides[Number(block.dataset.sidx)];
         const u = block.querySelector("[data-sgalurl]").value.trim();
-        if (!/^\/(uploads|images)\/[^/]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/banner-1.webp", "error"); return; }
+        if (!/^(https:\/\/|\/(uploads|images)\/)[^?#\s]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/banner-1.webp", "error"); return; }
         if (sl.images.length >= 6) { toast("Maximum 6 photos per banner.", "error"); return; }
         if (sl.images.includes(u)) { toast("That photo is already in this banner.", "error"); return; }
         sl.images.push(u);
@@ -495,20 +496,21 @@
       set(row.dataset.kind, row.dataset.key, "");
       draw();
     });
-    $("#hpSave").addEventListener("click", async () => {
+    const doSaveHomepage = async (quiet) => {
       const IMG_OK = /^\/(uploads|images)\/[^/]+\.(jpe?g|png|webp|gif|avif)$/i;
       const clean = slides
         .map((b) => ({
           eyebrow: (b.eyebrow || "").trim(), title: (b.title || "").trim(), message: (b.message || "").trim(), badge: (b.badge || "").trim(),
-          images: [...new Set((b.images || []).filter((u) => IMG_OK.test(u)))].slice(0, 6),
+          images: [...new Set((b.images || []).filter((u) => IMG_OK.test(u) || u.startsWith("https://")))].slice(0, 6),
         }))
         .map((b) => ({ ...b, image: b.images[0] || "" }))
         .filter((b) => b.eyebrow || b.title || b.message || b.badge || b.images.length);
-      try {
-        await api("/api/admin/settings", { method: "PUT", body: JSON.stringify({ ...s, heroSlides: clean, hero: clean[0] || blankSlide(), categoryImages: catImgs, collectionImages: colImgs }) });
-        $("#hpMsg").textContent = "Saved — banners live on the homepage.";
-        toast("Homepage saved.");
-      } catch (err) { toast(err.message, "error"); }
+      await api("/api/admin/settings", { method: "PUT", body: JSON.stringify({ ...s, heroSlides: clean, hero: clean[0] || blankSlide(), categoryImages: catImgs, collectionImages: colImgs }) });
+      if (!quiet) { $("#hpMsg").textContent = "Saved — banners live on the homepage."; toast("Homepage saved."); }
+    };
+    $("#hpSave").addEventListener("click", async () => {
+      try { await doSaveHomepage(false); }
+      catch (err) { toast(err.message, "error"); }
     });
   }
 

@@ -132,13 +132,30 @@ function initHero(root, count) {
   slides.forEach((s) => {
     const shots = [...s.querySelectorAll(".hero-fg")];
     if (shots.length < 2) return;
+    shots.forEach((im) => { const pre = new Image(); pre.src = im.currentSrc || im.src; });
     const backs = [...s.querySelectorAll(".hero-bg")];
     let k = 0;
+    const makeSwapper = (list) => {
+      let gen = 0;
+      return () => {
+        const my = ++gen;
+        list.forEach((im, j) => {
+          im.style.zIndex = j === k ? 3 : 1;
+          if (j === k) im.classList.add("on");
+        });
+        setTimeout(() => {
+          if (my !== gen) return;
+          list.forEach((im, j) => { if (j !== k) { im.classList.remove("on"); im.style.zIndex = 1; } });
+        }, 850);
+      };
+    };
+    const swapShots = makeSwapper(shots);
+    const swapBacks = makeSwapper(backs);
     setInterval(() => {
       if (reduced || document.hidden || !s.classList.contains("active")) return;
       k = (k + 1) % shots.length;
-      shots.forEach((im, j) => im.classList.toggle("on", j === k));
-      backs.forEach((im, j) => im.classList.toggle("on", j === k));
+      swapShots();
+      swapBacks();
     }, 3000);
   });
   // Banner-to-banner rotation needs 2+ banners.
@@ -220,7 +237,7 @@ export function HomePage() {
             <div><strong>Ships in 24 hrs</strong>Across India</div>
           </div>
         </div>
-        <div class="hero-art">${heroArt()}${stack("hero-bg", "")}${stack("hero-fg", b.title)}<span class="hero-badge">${esc(b.badge)}</span></div>
+        <div class="hero-art">${heroArt()}${stack("hero-bg", "")}${stack("hero-fg", b.title)}</div>
       </div>`;
   };
   const heroHTML = `

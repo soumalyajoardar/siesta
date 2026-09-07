@@ -84,10 +84,10 @@
 .hero-meta strong{display:block;color:var(--ink);font-size:1rem}
 .hero-art{position:relative;min-height:420px;background:linear-gradient(135deg,#EDE7DB 0%,#DDD6C6 45%,#CFC7B4 100%);overflow:hidden}
 .hero-art svg{position:absolute;inset:0;width:100%;height:100%}
-.hero-art>img{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .8s var(--ease)}
+.hero-art>img{position:absolute;inset:0;width:100%;height:100%;opacity:0;z-index:1;transition:opacity .8s var(--ease)}
 .hero-art>img.on{opacity:1}
 .hero-art .hero-bg{object-fit:cover;filter:blur(28px) brightness(.97);transform:scale(1.15)}
-.hero-art .hero-fg{object-fit:contain}
+.hero-art .hero-fg{object-fit:contain;inset:9%;width:82%;height:82%}
 .hero-badge{position:absolute;left:18px;bottom:18px;background:rgba(20,20,20,.86);color:#fff;border-radius:12px;padding:.6rem .9rem;font-size:.82rem;backdrop-filter:blur(6px)}
 .hero-controls{position:absolute;left:0;right:0;bottom:.75rem;display:flex;align-items:center;justify-content:center;gap:.7rem;z-index:3}
 .hero-dots{display:flex;gap:.45rem}
