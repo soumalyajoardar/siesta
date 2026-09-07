@@ -396,14 +396,26 @@
           <div style="display:flex;gap:.5rem;margin-top:.6rem"><input class="input" data-sgalurl placeholder="/images/banner-1.webp" style="flex:1" /><button type="button" class="btn btn-light btn-sm" data-sgaladd>Add</button></div>
         </div>
       </div>`;
+    let dirty = false;
+    const markDirty = () => {
+      dirty = true;
+      const d = document.getElementById("hpDirty");
+      if (d) { d.textContent = "● Unsaved changes"; d.style.color = "var(--clay)"; }
+    };
+    const markSaved = () => {
+      dirty = false;
+      const d = document.getElementById("hpDirty");
+      if (d) { d.textContent = "✓ All saved"; d.style.color = "var(--success)"; }
+    };
     const draw = () => {
       $("#hpSlides").innerHTML = slides.map(slideHTML).join("");
       $("#hpCatRows").innerHTML = CATS.map(([k, l]) => rowHTML("cat", k, l)).join("");
       $("#hpColRows").innerHTML = COLS.map(([k, l]) => rowHTML("col", k, l)).join("");
+      if (dirty) markDirty(); else markSaved();
     };
     $("#view").innerHTML = `
       <div id="hpWrap">
-      <div class="card"><h3>Hero banners <span class="muted small">— fade and rotate on the homepage. Empty fields keep the built-in text.</span></h3>
+      <div class="card"><h3>Hero banners <span class="muted small">— fade and rotate on the homepage. Empty fields keep the built-in text.</span> <span id="hpDirty" class="small" role="status"></span></h3>
         <div id="hpSlides"></div>
         <button type="button" class="btn btn-light btn-sm" id="hpAddSlide">+ Add banner</button>
       </div>
@@ -412,13 +424,13 @@
       <button class="btn btn-dark" id="hpSave">Save Homepage</button> <span class="muted small" id="hpMsg"></span>
       </div>`;
     draw();
-    $("#hpAddSlide").addEventListener("click", () => { slides.push(blankSlide()); draw(); });
+    $("#hpAddSlide").addEventListener("click", () => { slides.push(blankSlide()); markDirty(); draw(); });
     $("#hpWrap").addEventListener("input", (ev) => {
       const f = ev.target.closest("[data-sfield]");
       if (!f) return;
       const block = f.closest(".slide-block");
       const sl = slides[Number(block.dataset.sidx)];
-      if (sl) sl[f.dataset.sfield] = f.value;
+      if (sl) { sl[f.dataset.sfield] = f.value; markDirty(); }
     });
     $("#hpWrap").addEventListener("change", async (ev) => {
       const sgal = ev.target.closest("[data-sgalup]");
@@ -429,6 +441,7 @@
           const up = await uploadFiles(sgal.files);
           const room = Math.max(0, 6 - sl.images.length);
           sl.images.push(...up.map((x) => x.url).slice(0, room));
+          markDirty();
           draw();
           await doSaveHomepage(true);
           toast("Photo saved to the banner.");
@@ -444,6 +457,7 @@
           toast("Uploading…");
           const up = await uploadFiles(ev.target.files);
           set(kind, key, up[0].url);
+          markDirty();
           draw();
           toast("Uploaded — remember to Save Homepage.");
         } catch (err) { toast(err.message, "error"); }
@@ -452,6 +466,7 @@
         const u = ev.target.value.trim();
         if (u && !/^(https:\/\/|\/(uploads|images)\/)[^?#\s]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/hero.webp", "error"); draw(); return; }
         set(kind, key, u);
+        markDirty();
         draw();
       }
     });
@@ -465,12 +480,14 @@
         if (sl.images.length >= 6) { toast("Maximum 6 photos per banner.", "error"); return; }
         if (sl.images.includes(u)) { toast("That photo is already in this banner.", "error"); return; }
         sl.images.push(u);
+        markDirty();
         draw();
         return;
       }
       const del = ev.target.closest("[data-sgaldel]");
       if (del) {
         slides[Number(del.closest(".slide-block").dataset.sidx)].images.splice(Number(del.dataset.sgaldel), 1);
+        markDirty();
         draw();
         return;
       }
@@ -481,12 +498,14 @@
         const j = i + Number(mv.dataset.smove);
         if (j < 0 || j >= slides.length) return;
         [slides[i], slides[j]] = [slides[j], slides[i]];
+        markDirty();
         draw();
         return;
       }
       if (ev.target.closest("[data-sdel]")) {
         if (slides.length <= 1) { toast("Keep at least one banner (leave it empty for built-in text).", "error"); return; }
         slides.splice(Number(ev.target.closest(".slide-block").dataset.sidx), 1);
+        markDirty();
         draw();
         return;
       }
@@ -494,6 +513,7 @@
       if (!btn) return;
       const row = btn.closest(".img-row");
       set(row.dataset.kind, row.dataset.key, "");
+      markDirty();
       draw();
     });
     const doSaveHomepage = async (quiet) => {
@@ -506,6 +526,16 @@
         .map((b) => ({ ...b, image: b.images[0] || "" }))
         .filter((b) => b.eyebrow || b.title || b.message || b.badge || b.images.length);
       await api("/api/admin/settings", { method: "PUT", body: JSON.stringify({ ...s, heroSlides: clean, hero: clean[0] || blankSlide(), categoryImages: catImgs, collectionImages: colImgs }) });
+      // Rebuild from server truth so the editor always shows exactly what is saved.
+      const fresh = await api("/api/admin/settings");
+      s = fresh;
+      slides = (Array.isArray(fresh.heroSlides) && fresh.heroSlides.length ? fresh.heroSlides : [blankSlide()]).map(withGallery);
+      for (const k of Object.keys(catImgs)) delete catImgs[k];
+      Object.assign(catImgs, fresh.categoryImages || {});
+      for (const k of Object.keys(colImgs)) delete colImgs[k];
+      Object.assign(colImgs, fresh.collectionImages || {});
+      draw();
+      markSaved();
       if (!quiet) { $("#hpMsg").textContent = "Saved — banners live on the homepage."; toast("Homepage saved."); }
     };
     $("#hpSave").addEventListener("click", async () => {
