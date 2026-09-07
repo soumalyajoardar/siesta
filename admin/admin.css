@@ -13,6 +13,8 @@ body{background:#F4F2ED}
 .btn-dark{background:var(--ink);color:#fff}.btn-dark:hover{background:var(--ink-2)}
 .btn-light{background:#fff;border-color:var(--line-2)}.btn-light:hover{border-color:var(--ink)}
 .btn-clay{background:var(--clay);color:#fff;border-color:var(--clay)}
+.btn-outline{background:transparent;border-color:var(--ink);color:var(--ink)}
+.btn-outline:hover{background:var(--ink);color:#fff}
 .btn-sm{padding:.42rem .85rem;font-size:.82rem}.btn-block{width:100%}
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .link-btn{background:none;border:0;color:var(--forest);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}

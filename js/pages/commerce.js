@@ -2,7 +2,7 @@
 import { STORE } from "../config.js";
 import { productById } from "../store.js";
 import * as S from "../store.js";
-import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart } from "../ui.js";
+import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openModal } from "../ui.js";
 import { apiHealth, serverCreateOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
 import { cardHTML, bindCards } from "./shop.js";
 
@@ -287,27 +287,130 @@ export function TrackPage(orderNo) {
       form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) location.hash = "#/track/" + encodeURIComponent(v.toUpperCase()); });
     });
     return `<div class="page page-narrow"><h1 class="h-display" style="font-size:2rem">Track your order</h1>
-    <form id="trackForm" class="coupon-row"><label class="visually-hidden" for="trackInput">Order number</label><input id="trackInput" class="input" placeholder="e.g. SS-2026-123456"/><button class="btn btn-dark" type="submit">Track</button></form>
+    <form id="trackForm" class="coupon-row"><label class="visually-hidden" for="trackInput">Order number</label><input id="trackInput" class="input" placeholder="e.g. 483920174658"/><button class="btn btn-dark" type="submit">Track</button></form>
     ${orders.length ? `<h2>Recent orders</h2>${orders.slice(0, 5).map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}` : `<p class="muted">No orders on this device yet.</p>`}</div>`;
   }
   setTimeout(async () => {
     await refreshMirror(orderNo); // live admin status when online
     const raw = S.getOrders().find((x) => x.orderNo.toLowerCase() === orderNo.toLowerCase());
     const el = document.getElementById("trackWrap");
-    if (el) el.innerHTML = raw ? trackHTML(S.orderWithProgress(raw)) : `<div class="empty"><h2>We couldn't find ${esc(orderNo)}</h2><p class="muted">Check the order number on your confirmation screen or in My Orders.</p><a class="btn btn-dark" href="#/track">Try Again</a></div>`;
+    if (!el) return;
+    if (!raw) { el.innerHTML = `<div class="empty"><h2>We couldn't find ${esc(orderNo)}</h2><p class="muted">Check the order number on your confirmation screen or in My Orders.</p><a class="btn btn-dark" href="#/track">Try Again</a></div>`; return; }
+    const o = S.orderWithProgress(raw);
+    el.innerHTML = trackHTML(o);
+    el.querySelectorAll("[data-review]").forEach((b) => (b.onclick = () => openReviewModal(o.orderNo, o.items[Number(b.dataset.review)])));
+    el.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); toast("Order number copied."); }
+      catch { toast("Order number: " + b.dataset.copy); }
+    }));
   });
   return `<div class="page"><div id="trackWrap"><div class="card"><div class="skel" style="height:320px"></div></div></div></div>`;
 }
 
+// Genuine per-stage notes. Legacy placeholder notes from older orders are
+// translated at render time so history reads honestly without rewriting it.
+const STAGE_NOTES_FALLBACK = {
+  confirmed: "Order received — your items are reserved and the packing list is ready.",
+  processing: "Your items are being picked and quality-checked at our facility.",
+  packed: "Packed, sealed and labelled — ready for courier handoff.",
+  shipped: "Handed to our delivery partner and on its way to you.",
+  out_for_delivery: "Out for delivery and arriving today — please keep the COD amount ready.",
+  delivered: "Delivered. We hope you love it — tap below to review your items.",
+  cancelled: "Cancelled before shipment — nothing was charged (Cash on Delivery).",
+};
+const LEGACY_NOTES = new Set(["Updated by store admin", "Cancelled by customer", "Updated by Siesta order system (illustrative)"]);
+const noteFor = (stage, note) => (note && !LEGACY_NOTES.has(note) ? note : STAGE_NOTES_FALLBACK[stage] || note || "");
+
 function trackHTML(o) {
   const stages = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
   const labels = { confirmed: "Order Confirmed", processing: "Processing", packed: "Packed", shipped: "Shipped", out_for_delivery: "Out for Delivery", delivered: "Delivered" };
-  return `<nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><a href="#/orders">Orders</a><span>/</span><span aria-current="page">${esc(o.orderNo)}</span></nav>
-  <div class="split"><div class="card"><span class="eyebrow">Estimated delivery · ${esc(o.eta)}</span><h1 class="h-display" style="font-size:1.8rem">${esc(labels[o.status] || o.status)}</h1>
-    <p class="muted">Order ${esc(o.orderNo)} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} (COD)</p>
-    <ol class="timeline">${stages.map((s, i) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(hit.note)}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
-    <p class="muted" style="font-size:.82rem">${o._remote ? "Live status from the Siesta store — updated when the order is packed and shipped." : "Status reflects Siesta's order system on this device. Live courier scans will appear here once a delivery partner is connected."}</p></div>
-  <aside class="card"><h2 style="margin-top:0">Delivery details</h2><p>${esc(o.address.name)}<br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</p><h3>Items</h3>${o.items.map((i) => `<div class="summary-row"><span>${esc(i.name)} × ${i.qty} (${esc(i.size)})</span><span>${inr(i.price * i.qty)}</span></div>`).join("")}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside></div></div>`;
+  const crumbs = `<nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><a href="#/orders">Orders</a><span>/</span><span aria-current="page">${esc(o.orderNo)}</span></nav>`;
+  const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
+  const thumbFor = (i) => {
+    const p = productById(i.id);
+    const src = p && p.images && p.images[0];
+    if (src) return `<img class="t-item-thumb" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()" />`;
+    if (p) return `<span class="t-item-thumb t-item-art" aria-hidden="true">${productArt(p)}</span>`;
+    return `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
+  };
+  const aside = `<aside class="card track-aside"><h2 style="margin-top:0">Delivery details</h2>
+    <p class="t-addr"><span aria-hidden="true">⌂</span><span>${esc(o.address.name)}<br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
+    <h3>Items (${itemCount})</h3>${o.items.map((i) => `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${esc(i.name)} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`).join("")}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
+
+  if (o.status === "cancelled") {
+    const conf = o.timeline.find((t) => t.stage === "confirmed");
+    const canc = [...o.timeline].reverse().find((t) => t.stage === "cancelled");
+    return `${crumbs}<div class="split"><div class="card track-card">
+      <h1 class="h-display" style="font-size:1.8rem">Order cancelled.</h1>
+      <p class="muted">Order ${esc(o.orderNo)} · ${inr(o.amounts.total)} was never charged (Cash on Delivery).</p>
+      <ol class="timeline mini">
+        <li class="done"><span class="dot" aria-hidden="true"></span><strong>Order Confirmed</strong>${conf ? `<time>${new Date(conf.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("confirmed", conf.note))}</div>` : ""}</li>
+        <li class="done current cancelled"><span class="dot" aria-hidden="true"></span><strong>Cancelled</strong>${canc ? `<time>${new Date(canc.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("cancelled", canc.note))}</div>` : ""}</li>
+      </ol>
+      <a class="btn btn-dark btn-sm" href="#/shop">Shop Again</a></div>${aside}</div>`;
+  }
+
+  const pct = Math.round(((o.stageIndex ?? 0) / (stages.length - 1)) * 100);
+  const stepNo = Math.min((o.stageIndex ?? 0) + 1, stages.length);
+  const etaDays = Math.max(0, Math.ceil((new Date(o.createdAt).getTime() + 5 * 86400000 - Date.now()) / 86400000));
+  const etaText = o.status === "delivered" ? "Delivered — enjoy!" : etaDays <= 0 ? "Arriving today" : `Arriving in ${etaDays} day${etaDays === 1 ? "" : "s"}`;
+  return `${crumbs}
+  <div class="split"><div class="card track-card">
+    <div class="track-hero">
+      <div>
+        <span class="status-pill${o.status === "delivered" ? " is-done" : ""}"><span class="pulse-dot" aria-hidden="true"></span>${esc(labels[o.status] || o.status)}</span>
+        <h1 class="h-display" style="font-size:1.8rem;margin:.5rem 0 .3rem">${esc(etaText)}</h1>
+        <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
+      </div>
+      <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">⧉</span></button>
+    </div>
+    <div class="eta-panel"><span aria-hidden="true">▣</span><div><strong>Estimated delivery · ${esc(o.eta)}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>
+    <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
+    <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
+    ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review ${esc(it.name.length > 26 ? it.name.slice(0, 26) + "…" : it.name)}</button>`).join("")}</div></div>` : ""}
+    <p class="muted" style="font-size:.82rem">${o._remote ? "Live status from the Siesta store — updated at every step from packing to delivery." : "Status reflects Siesta's order system on this device. Live courier scans will appear here once a delivery partner is connected."}</p></div>
+  ${aside}</div>`;
+}
+
+// ---------------- WRITE A REVIEW (delivered orders only) ----------------
+export function openReviewModal(orderNo, item) {
+  let rating = 0;
+  const { el, close } = openModal(`Review: ${item.name}`, `
+    <div class="stars-input" role="radiogroup" aria-label="Choose a star rating">
+      ${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" role="radio" aria-checked="false" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}
+    </div>
+    <p class="err" id="rvStarErr" role="alert"></p>
+    <div class="field"><label for="rvTitle">Headline (optional)</label><input id="rvTitle" class="input" maxlength="120" placeholder="Sums it up in a line" /></div>
+    <div class="field"><label for="rvText">Your review *</label><textarea id="rvText" class="input" rows="4" maxlength="1000" placeholder="Fit, fabric, delivery experience… (min 10 characters)"></textarea></div>
+    <p class="err" id="rvErr" role="alert"></p>
+    <button class="btn btn-dark btn-block" id="rvSubmit">Submit Review</button>`);
+  const paint = () => el.querySelectorAll("[data-star]").forEach((b) => {
+    const n = Number(b.dataset.star);
+    b.classList.toggle("lit", n <= rating);
+    b.setAttribute("aria-checked", String(n === rating));
+  });
+  el.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => { rating = Number(b.dataset.star); paint(); el.querySelector("#rvStarErr").textContent = ""; }));
+  el.querySelector("#rvSubmit").onclick = async (e) => {
+    if (!rating) { el.querySelector("#rvStarErr").textContent = "Please choose a star rating."; return; }
+    const text = el.querySelector("#rvText").value.trim();
+    if (text.length < 10) { el.querySelector("#rvErr").textContent = "Please write at least a sentence (10+ characters)."; return; }
+    const btn = e.currentTarget;
+    btn.classList.add("is-loading"); btn.disabled = true;
+    try {
+      const r = await fetch("/api/reviews", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderNo, productId: item.id, rating, title: el.querySelector("#rvTitle").value.trim(), text }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Could not save your review.");
+      close();
+      toast("Thanks! Your review is now public.");
+      document.dispatchEvent(new CustomEvent("siesta:reroute"));
+    } catch (err) {
+      el.querySelector("#rvErr").textContent = err.message;
+      btn.classList.remove("is-loading"); btn.disabled = false;
+    }
+  };
 }
 
 // ---------------- WISHLIST ----------------

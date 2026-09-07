@@ -185,14 +185,16 @@ const STAGES = ["confirmed", "processing", "packed", "shipped", "out_for_deliver
 export const STAGE_LABEL = { confirmed: "Order Confirmed", processing: "Processing", packed: "Packed", shipped: "Shipped", out_for_delivery: "Out for Delivery", delivered: "Delivered" };
 export function getOrders() { return read(K.orders, []); }
 export function createOrder({ items, address, payment, amounts }) {
-  const n = getOrders().length + 1;
-  const orderNo = `SS-2026-${String(100000 + Math.floor(Math.random() * 899999))}`;
+  const taken = new Set(getOrders().map((o) => o.orderNo));
+  let orderNo = "";
+  do {
+    orderNo = String(Date.now()).slice(-6) + String(Math.floor(100000 + Math.random() * 900000));
+  } while (taken.has(orderNo));
   const now = new Date().toISOString();
   const order = {
     orderNo, createdAt: now, items, address, payment,
     amounts, status: "confirmed",
     timeline: [{ stage: "confirmed", at: now, note: "Order placed · Cash on Delivery" }],
-    _seq: n,
   };
   const all = [order, ...getOrders()];
   write(K.orders, all);

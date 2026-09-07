@@ -67,12 +67,12 @@
   $("#logoutBtn").addEventListener("click", showLogin);
 
   /* ---------- router ---------- */
-  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", coupons: "Coupons", media: "Media Library", settings: "Settings" };
+  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", reviews: "Reviews", coupons: "Coupons", media: "Media Library", settings: "Settings" };
   let productsCache = [];
   function nav(view) {
     $$("#sideNav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     $("#viewTitle").textContent = TITLES[view];
-    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
+    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, reviews: vReviews, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
   }
   $("#sideNav").addEventListener("click", (e) => { if (e.target.dataset.view) nav(e.target.dataset.view); });
 
@@ -512,6 +512,37 @@
     });
   }
 
+  /* ---------- reviews (moderation) ---------- */
+  async function vReviews() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/reviews");
+      const avg = list.length ? (Math.round((list.reduce((s, r) => s + r.rating, 0) / list.length) * 10) / 10) : "—";
+      $("#view").innerHTML = `
+        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="stat"><span>Total reviews</span><strong>${list.length}</strong></div>
+          <div class="stat"><span>Average rating</span><strong>${avg}</strong></div>
+        </div>
+        <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+          <tr><th>Product</th><th>Rating</th><th>Review</th><th>Author</th><th>Date</th><th></th></tr>
+          ${list.map((r) => `<tr>
+            <td><strong>${esc(r.productName || r.productId)}</strong><br /><span class="muted small">${esc(r.orderNo)}</span></td>
+            <td>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</td>
+            <td>${r.title ? `<strong>${esc(r.title)}</strong><br />` : ""}<span class="muted">${esc(r.text.slice(0, 160))}${r.text.length > 160 ? "…" : ""}</span></td>
+            <td>${esc(r.author)}</td>
+            <td class="muted small">${new Date(r.createdAt).toLocaleDateString("en-IN")}</td>
+            <td><button class="btn btn-light btn-sm" data-rdel="${esc(r.id)}">Delete</button></td>
+          </tr>`).join("") || `<tr><td colspan="6" class="muted">No reviews yet — they appear here after delivered orders are reviewed.</td></tr>`}
+        </table></div>
+        <p class="muted small">Only verified-purchase reviews can be submitted (one per order + product). Delete anything abusive or spam.</p>`;
+      $$("#view [data-rdel]").forEach((b) => (b.onclick = async () => {
+        if (!confirm("Delete this review permanently?")) return;
+        try { await api("/api/admin/reviews/" + encodeURIComponent(b.dataset.rdel), { method: "DELETE" }); toast("Review deleted."); vReviews(); }
+        catch (e) { toast(e.message, "error"); }
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
   /* ---------- orders ---------- */
   async function vOrders() {
     $("#view").innerHTML = "<p class='muted'>Loading…</p>";
@@ -622,11 +653,26 @@
         <div class="field"><label>Max COD order (₹)</label><input class="input" name="codMaxOrder" type="number" value="${s.codMaxOrder}" /></div>
         <div class="field"><label>Announcement bar</label><input class="input" name="announcement" value="${esc(s.announcement || "")}" /></div>
         <div><br /><button class="btn btn-dark btn-sm" type="submit">Save Settings</button></div>
-      </form></div>`;
+      </form></div>
+      <div class="card"><h3>Admin password</h3><p class="muted small">Stored scrypt-hashed in the database (never plaintext). Changing it logs out other sessions.</p>
+        <form id="pwForm" class="grid-2">
+          <div class="field"><label>Current password</label><input class="input" name="cur" type="password" autocomplete="current-password" required /></div>
+          <div class="field"><label>New password (min 8 characters)</label><input class="input" name="next" type="password" autocomplete="new-password" required /></div>
+          <div><br /><button class="btn btn-outline btn-sm" type="submit">Change Password</button></div>
+        </form></div>`;
       $("#sForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         try { await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) }); toast("Settings saved."); }
         catch (err) { toast(err.message, "error"); }
+      });
+      $("#pwForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(e.target).entries());
+        try {
+          await api("/api/admin/password", { method: "PATCH", body: JSON.stringify(v) });
+          e.target.reset();
+          toast("Password changed. Use it next time you log in.");
+        } catch (err) { toast(err.message, "error"); }
       });
     } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }

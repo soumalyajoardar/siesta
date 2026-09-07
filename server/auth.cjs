@@ -1,19 +1,20 @@
 "use strict";
-// Admin authentication.
-// - If ADMIN_PASSWORD is set it is authoritative (verified directly, never
-//   stored): required on serverless hosting, convenient anywhere.
-// - Otherwise the classic flow: scrypt-hashed password persisted locally,
-//   generated + printed once on first run.
-// - Tokens: stateless signed JWT when ADMIN_PASSWORD is set (survives across
-//   serverless invocations), otherwise in-memory sessions (single server).
+// Admin authentication. The login credential lives ONLY in the database:
+//   - Supabase mode → `collections` row "admin" (shared across all instances)
+//   - JSON mode → server/data/admin.json
+// No password is ever kept in files, env vars, or code. ADMIN_PASSWORD is
+// used once, purely as a first-run bootstrap (persisted immediately, then
+// ignored); afterwards the stored record rules. Without any record, a safe
+// password is generated + printed (local only — Vercel refuses instead).
+// Tokens are stateless JWTs signed with a key derived from the stored
+// record, so logins survive restarts, redeploys and multiple instances.
+// Rotate anytime in Admin → Settings (re-signs every session).
 // NOTE: for single-server local / small-business use. Always serve over HTTPS
 // in production (Vercel provides this automatically).
 const crypto = require("crypto");
-const { load, save } = require("./db.cjs");
+const store = require("./store.cjs");
 
-const sessions = new Map(); // token -> { createdAt } (local single-server mode)
 const TOKEN_TTL = 12 * 3600 * 1000;
-const ENV_SALT = "siesta-admin-env-v1";
 const JWT_SALT = "siesta-jwt-v1";
 
 const hasEnvPassword = () => Boolean(process.env.ADMIN_PASSWORD);
@@ -22,51 +23,77 @@ function hash(password, salt) {
   return crypto.scryptSync(String(password), salt, 64).toString("hex");
 }
 
-function getAdminRecord() {
-  if (hasEnvPassword()) return { username: "admin", mode: "env" };
-  let rec = load("admin", null);
-  if (!rec) {
-    const password = `siesta-${crypto.randomBytes(4).toString("hex")}`;
-    console.log("\n  *** SIESTA ADMIN ***  First run: generated admin password:\n");
-    console.log(`      ${password}\n`);
-    console.log("  Log in at /admin with username 'admin'. Set ADMIN_PASSWORD env to change it.\n");
-    const salt = crypto.randomBytes(16).toString("hex");
-    rec = { username: "admin", salt, hash: hash(password, salt), createdAt: new Date().toISOString() };
-    save("admin", rec);
-  }
-  return rec;
+function makeRecord(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  return { username: "admin", salt, hash: hash(password, salt), createdAt: new Date().toISOString() };
 }
 
-function verify(password) {
+// Source of truth: stored record → else ADMIN_PASSWORD bootstrap (persisted)
+// → else generated password (local only; Vercel refuses without one).
+async function getAdminRecord() {
+  const rec = await store.getAdmin();
+  if (rec && rec.hash) return rec;
+  if (hasEnvPassword()) {
+    const created = makeRecord(process.env.ADMIN_PASSWORD);
+    await store.saveAdmin(created);
+    return created;
+  }
+  if (process.env.VERCEL) {
+    throw new Error("Set ADMIN_PASSWORD once in Vercel environment variables and redeploy to create the admin login.");
+  }
+  const password = `siesta-${crypto.randomBytes(4).toString("hex")}`;
+  console.log("\n  *** SIESTA ADMIN ***  First run: generated admin password:\n");
+  console.log(`      ${password}\n`);
+  console.log("  Log in at /admin with username 'admin'. Change it in Admin → Settings afterwards.\n");
+  const created = makeRecord(password);
+  await store.saveAdmin(created);
+  return created;
+}
+
+async function verify(password) {
   try {
-    if (hasEnvPassword()) {
-      return crypto.timingSafeEqual(
-        Buffer.from(hash(password, ENV_SALT), "hex"),
-        Buffer.from(hash(process.env.ADMIN_PASSWORD, ENV_SALT), "hex")
-      );
-    }
-    const rec = getAdminRecord();
+    const rec = await getAdminRecord();
     return crypto.timingSafeEqual(Buffer.from(hash(password, rec.salt), "hex"), Buffer.from(rec.hash, "hex"));
   } catch {
     return false;
   }
 }
 
-// ---- stateless JWT (used when ADMIN_PASSWORD is set) ----
-function jwtKey() {
-  return crypto.scryptSync(String(process.env.ADMIN_PASSWORD), JWT_SALT, 32);
+async function changePassword(currentPw, nextPw) {
+  const rec = await getAdminRecord();
+  let ok = false;
+  try {
+    ok = crypto.timingSafeEqual(Buffer.from(hash(currentPw, rec.salt), "hex"), Buffer.from(rec.hash, "hex"));
+  } catch { ok = false; }
+  if (!ok) {
+    const err = new Error("Your current password is incorrect.");
+    err.status = 401;
+    throw err;
+  }
+  if (String(nextPw || "").length < 8) {
+    const err = new Error("New password must be at least 8 characters.");
+    err.status = 400;
+    throw err;
+  }
+  await store.saveAdmin(makeRecord(nextPw));
 }
-function signJwt() {
+
+// ---- stateless JWT, keyed by the stored record (works on every instance) ----
+async function jwtKey() {
+  const rec = await getAdminRecord();
+  return crypto.scryptSync(String(rec.hash), JWT_SALT, 32);
+}
+async function issueToken() {
   const payload = Buffer.from(JSON.stringify({ exp: Date.now() + TOKEN_TTL })).toString("base64url");
-  const sig = crypto.createHmac("sha256", jwtKey()).update(`jwt.${payload}`).digest("hex");
+  const sig = crypto.createHmac("sha256", await jwtKey()).update(`jwt.${payload}`).digest("hex");
   return `jwt.${payload}.${sig}`;
 }
-function validJwt(token) {
+async function validToken(token) {
   try {
-    if (!hasEnvPassword() || typeof token !== "string") return false;
+    if (typeof token !== "string") return false;
     const [tag, payload, sig] = token.split(".");
     if (tag !== "jwt" || !payload || !sig) return false;
-    const expect = crypto.createHmac("sha256", jwtKey()).update(`jwt.${payload}`).digest("hex");
+    const expect = crypto.createHmac("sha256", await jwtKey()).update(`jwt.${payload}`).digest("hex");
     if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expect, "hex"))) return false;
     const { exp } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     return Number(exp) > Date.now();
@@ -87,25 +114,14 @@ function recordFailure(ip) {
   failures.set(ip, [...(failures.get(ip) || []), Date.now()]);
 }
 
-function issueToken() {
-  if (hasEnvPassword()) return signJwt();
-  const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { createdAt: Date.now() });
-  return token;
+async function requireAdmin(req, res, next) {
+  try {
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!(await validToken(token))) return res.status(401).json({ error: "Admin login required." });
+    next();
+  } catch {
+    res.status(401).json({ error: "Admin login required." });
+  }
 }
 
-function validToken(token) {
-  if (validJwt(token)) return true;
-  const s = sessions.get(token);
-  if (!s) return false;
-  if (Date.now() - s.createdAt > TOKEN_TTL) { sessions.delete(token); return false; }
-  return true;
-}
-
-function requireAdmin(req, res, next) {
-  const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!validToken(token)) return res.status(401).json({ error: "Admin login required." });
-  next();
-}
-
-module.exports = { getAdminRecord, verify, issueToken, requireAdmin, rateLimited, recordFailure };
+module.exports = { getAdminRecord, verify, changePassword, issueToken, validToken, requireAdmin, rateLimited, recordFailure, hasEnvPassword };

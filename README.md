@@ -46,10 +46,12 @@ files can't persist on Vercel, so the Supabase setup above is required first).
 1. Push the project to GitHub, then https://vercel.com →
    **Add New → Project** → import your repo. Framework preset: **Other**.
    No build command, no output directory — leave both empty.
-2. **Settings → Environment Variables**, add all three (all environments):
+2. **Settings → Environment Variables**, add (all environments):
    - `SUPABASE_URL` = your Project URL
    - `SUPABASE_SERVICE_KEY` = your secret/service key (never the anon key)
-   - `ADMIN_PASSWORD` = your admin password (required — e.g. your current one)
+   - `ADMIN_PASSWORD` = only needed if the database has no admin login yet
+     (one-time bootstrap; afterwards the DB record rules — rotate in
+     Admin → Settings, never by redeploying)
 3. **Deploy.** You get `https://siesta-xyz.vercel.app`:
    - Store + `/admin` served worldwide over HTTPS by Vercel's CDN
    - `/api/*` runs the same Express app as a function (Supabase backend,
@@ -69,6 +71,10 @@ backups only and are not deployed.
   colours, pricing, badges — changes go live in the store immediately
 - **Orders** — filter by status, advance Confirmed → … → Delivered
   (customers see it live on Track Order), cancel
+- **Reviews** — verified-purchase reviews customers write from delivered
+  orders; publish publicly on product pages, delete abuse here
+- **Settings** — thresholds, announcement bar, and the admin password change
+  (stored scrypt-hashed in the database, same store as everything else)
 - **Events** — create sales, festive edits and drops with banner + gallery
   image uploads, button links, badges and start/end dates; live events appear
   in a "Happening now" section on the store homepage
@@ -99,7 +105,7 @@ bundled catalog with browser-local orders.
 - Coupons: `WELCOME10` · `SIESTA15` · `FLAT200` (+ `EXPIRED5` for the expired state)
 - Checkout: Address → Delivery → Payment (**Cash on Delivery only**, rest show
   "Coming soon") → Review → animated order processing → confirmation
-- Track: `#/track/SS-2026-XXXXXX` · Orders: `#/account/orders` (cancel pre-ship)
+- Track: `#/track/483920174658` (12-digit order numbers) · Orders: `#/account/orders` (cancel pre-ship)
 - Auth: Register/Login/Logout, profile, addresses, password change (SHA-256+salt,
   never plaintext), "Erase my data"
 - Cookie banner: Accept / Reject / Manage → footer "Cookie preferences"

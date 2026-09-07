@@ -1,6 +1,11 @@
 // UI primitives: toasts, modals, original SVG product art, formatting, a11y helpers.
 export const esc = (s = "") => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
+// Star display (typographic, screen-reader labelled — never faked).
+export const stars = (n, label) => {
+  const full = Math.max(0, Math.min(5, Math.round(Number(n) || 0)));
+  return `<span class="stars" role="img" aria-label="${esc(label || `${full} out of 5 stars`)}">${"★".repeat(full)}${"☆".repeat(5 - full)}</span>`;
+};
 export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- Toasts (accessible, polite, persistent enough) ----------

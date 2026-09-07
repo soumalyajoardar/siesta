@@ -15,7 +15,7 @@ const express = require("express");
 const multer = require("multer");
 const store = require("./store.cjs");
 const sbs = require("./supabase.cjs");
-const { verify, issueToken, requireAdmin, rateLimited, recordFailure, getAdminRecord } = require("./auth.cjs");
+const { verify, issueToken, requireAdmin, rateLimited, recordFailure, getAdminRecord, changePassword, hasEnvPassword } = require("./auth.cjs");
 
 const IS_VERCEL = Boolean(process.env.VERCEL);
 const ROOT = path.join(__dirname, "..");
@@ -28,11 +28,14 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 
 // Safe diagnostic: which config the live deployment sees (names only, no secrets).
-app.get("/api/debug", (req, res) => {
+app.get("/api/debug", async (req, res) => {
+  let hasAdminRecord = false;
+  try { hasAdminRecord = Boolean((await store.getAdmin()) || hasEnvPassword()); } catch {}
   res.json({
     vercel: IS_VERCEL,
     backend: store.backend(),
     hasAdminPassword: Boolean(process.env.ADMIN_PASSWORD),
+    hasAdminRecord,
     hasSupabaseUrl: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
     hasSupabaseKey: Boolean(process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
     node: process.version,
@@ -64,10 +67,20 @@ if (IS_VERCEL) {
 }
 
 const STAGES = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
+// Customer-facing timeline notes — plain, honest, no fake courier scans.
+const STAGE_NOTES = {
+  confirmed: "Order received — your items are reserved and the packing list is ready.",
+  processing: "Your items are being picked and quality-checked at our facility.",
+  packed: "Packed, sealed and labelled — ready for courier handoff.",
+  shipped: "Handed to our delivery partner and on its way to you.",
+  out_for_delivery: "Out for delivery and arriving today — please keep the COD amount ready.",
+  delivered: "Delivered. We hope you love it — tap below to review your items.",
+  cancelled: "Cancelled before shipment — nothing was charged (Cash on Delivery).",
+};
 const CATEGORIES = ["tshirts", "shirts", "jackets", "hoodies", "jeans", "pants", "shorts", "sweatshirts"];
 
 /* ---------------- helpers ---------------- */
-const { getProducts, getCoupons, getOrders, getSettings, getEvents } = store;
+const { getProducts, getCoupons, getOrders, getSettings, getEvents, getReviews } = store;
 const notExpired = (c) => new Date(c.expires + "T23:59:59") >= new Date();
 const discountPct = (p) => (p.mrp > p.price ? Math.round((1 - p.price / p.mrp) * 100) : 0);
 // Allowed image locations: local uploads, project images folder, Supabase bucket.
@@ -109,9 +122,23 @@ function sanitizeProduct(b, isNew) {
 /* ---------------- public API ---------------- */
 app.get("/api/health", (req, res) => res.json({ ok: true, store: "Siesta", backend: store.backend(), time: new Date().toISOString() }));
 
+// Verified-purchase rating summaries, attached to product responses.
+function ratingMap(reviews) {
+  const m = {};
+  for (const r of reviews || []) {
+    (m[r.productId] = m[r.productId] || { count: 0, sum: 0 });
+    m[r.productId].count++;
+    m[r.productId].sum += r.rating;
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(m)) out[k] = { count: v.count, avg: Math.round((v.sum / v.count) * 10) / 10 };
+  return out;
+}
+
 app.get("/api/products", async (req, res) => {
   try {
     let list = await getProducts();
+    const ratings = ratingMap(await getReviews());
     const { category, gender, q } = req.query;
     if (category) list = list.filter((p) => p.category === category);
     if (gender) list = list.filter((p) => p.gender === gender);
@@ -119,7 +146,7 @@ app.get("/api/products", async (req, res) => {
       const n = String(q).toLowerCase();
       list = list.filter((p) => [p.name, p.category, p.gender, p.desc, p.material].join(" ").toLowerCase().includes(n));
     }
-    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p) })));
+    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p), rating: ratings[p.id] || { count: 0, avg: 0 } })));
   } catch (e) { res.status(500).json({ error: "Could not load products." }); }
 });
 
@@ -127,8 +154,54 @@ app.get("/api/products/:id", async (req, res) => {
   try {
     const p = (await getProducts()).find((x) => x.id === req.params.id);
     if (!p) return res.status(404).json({ error: "Product not found." });
-    res.json({ ...p, discountPct: discountPct(p) });
+    const r = ratingMap(await getReviews())[p.id] || { count: 0, avg: 0 };
+    res.json({ ...p, discountPct: discountPct(p), rating: r });
   } catch (e) { res.status(500).json({ error: "Could not load the product." }); }
+});
+
+// Public verified reviews for one product (newest first, no order details exposed).
+app.get("/api/products/:id/reviews", async (req, res) => {
+  try {
+    const list = (await getReviews())
+      .filter((r) => r.productId === req.params.id)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .map((r) => ({ id: r.id, rating: r.rating, title: r.title, text: r.text, author: r.author, createdAt: r.createdAt, verified: true }));
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: "Could not load reviews." }); }
+});
+
+// Write a review — only for items in DELIVERED orders, one per order+product.
+app.post("/api/reviews", async (req, res) => {
+  try {
+    const { orderNo, productId, rating, title, text } = req.body || {};
+    if (!orderNo || !productId) return res.status(400).json({ error: "Order number and product are required." });
+    const r = Math.round(Number(rating));
+    if (!(r >= 1 && r <= 5)) return res.status(400).json({ error: "Please choose a star rating from 1 to 5." });
+    const cleanText = String(text || "").trim();
+    if (cleanText.length < 10) return res.status(400).json({ error: "Please write at least a sentence (10+ characters) about the product." });
+    if (cleanText.length > 1000) return res.status(400).json({ error: "Please keep your review under 1000 characters." });
+    const order = (await getOrders()).find((x) => x.orderNo.toLowerCase() === String(orderNo).toLowerCase());
+    if (!order) return res.status(404).json({ error: "We couldn't find that order." });
+    if (order.status !== "delivered") return res.status(400).json({ error: "Reviews open up once your order is delivered." });
+    const item = order.items.find((i) => i.id === productId);
+    if (!item) return res.status(400).json({ error: "That product isn't part of this order." });
+    const reviews = await getReviews();
+    if (reviews.some((x) => x.orderNo === order.orderNo && x.productId === productId)) {
+      return res.status(409).json({ error: "You've already reviewed this item. Thanks!" });
+    }
+    const product = (await getProducts()).find((x) => x.id === productId);
+    const review = {
+      id: "rv-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      productId, productName: product ? product.name : item.name,
+      orderNo: order.orderNo, rating: r,
+      title: String(title || "").trim().slice(0, 120),
+      text: cleanText,
+      author: String((order.address && order.address.name) || "Verified buyer").trim().split(" ")[0] || "Verified buyer",
+      createdAt: new Date().toISOString(), verified: true,
+    };
+    await store.saveReviews([review, ...reviews]);
+    res.status(201).json({ id: review.id, rating: review.rating, title: review.title, text: review.text, author: review.author, createdAt: review.createdAt, verified: true });
+  } catch (e) { res.status(500).json({ error: "Could not save your review. Please try again." }); }
 });
 
 app.get("/api/coupons", async (req, res) => {
@@ -189,7 +262,12 @@ app.post("/api/orders", async (req, res) => {
     });
     await store.saveProducts(updated);
 
-    const orderNo = `SS-2026-${Math.floor(100000 + Math.random() * 899999)}`;
+    // Unique 12-digit order number (timestamp slice + random, collision-checked).
+    const existingNos = new Set((await getOrders()).map((x) => x.orderNo));
+    let orderNo = "";
+    do {
+      orderNo = String(Date.now()).slice(-6) + String(Math.floor(100000 + Math.random() * 900000));
+    } while (existingNos.has(orderNo));
     const now = new Date().toISOString();
     const order = {
       orderNo, createdAt: now, items: lines,
@@ -222,8 +300,8 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
     const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
     if (!o) return res.status(404).json({ error: "Order not found." });
     if (!["confirmed", "processing"].includes(o.status)) return res.status(400).json({ error: "This order can no longer be cancelled (already packed/shipped)." });
-    o.status = "cancelled";
-    o.timeline.push({ stage: "cancelled", at: new Date().toISOString(), note: "Cancelled by customer" });
+  o.status = "cancelled";
+  o.timeline.push({ stage: "cancelled", at: new Date().toISOString(), note: STAGE_NOTES.cancelled });
     // Restock.
     const products = (await getProducts()).map((p) => {
       const line = o.items.find((l) => l.id === p.id);
@@ -236,18 +314,30 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
 });
 
 /* ---------------- admin auth ---------------- */
-app.post("/api/admin/login", (req, res) => {
-  if (IS_VERCEL && !process.env.ADMIN_PASSWORD) {
-    return res.status(503).json({ error: "Admin login is disabled: set ADMIN_PASSWORD in Vercel environment variables and redeploy." });
-  }
+app.post("/api/admin/login", async (req, res) => {
   const ip = req.ip;
   if (rateLimited(ip)) return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+  try {
+    await getAdminRecord(); // surfaces bootstrap problems with a clear message
+  } catch (e) {
+    return res.status(503).json({ error: e.message });
+  }
   const { username, password } = req.body || {};
-  if (username === "admin" && verify(password)) {
-    return res.json({ token: issueToken() });
+  if (username === "admin" && (await verify(password))) {
+    return res.json({ token: await issueToken() });
   }
   recordFailure(ip);
   res.status(401).json({ error: "Invalid username or password." });
+});
+
+// Rotate the admin password (stored hashed in the database, never plaintext).
+app.patch("/api/admin/password", requireAdmin, async (req, res) => {
+  try {
+    await changePassword(req.body && req.body.current, req.body && req.body.next);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || "Could not change the password." });
+  }
 });
 
 /* ---------------- admin: products ---------------- */
@@ -468,10 +558,23 @@ app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
     const { status } = req.body;
     if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
     o.status = status;
-    o.timeline.push({ stage: status, at: new Date().toISOString(), note: "Updated by store admin" });
+    o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
     await store.saveOrders(orders);
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not update the order." }); }
+});
+
+/* ---------------- admin: reviews (moderation) ---------------- */
+app.get("/api/admin/reviews", requireAdmin, async (req, res) => {
+  try {
+    res.json((await getReviews()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  } catch (e) { res.status(500).json({ error: "Could not load reviews." }); }
+});
+app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
+  try {
+    await store.saveReviews((await getReviews()).filter((r) => r.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not delete the review." }); }
 });
 
 /* ---------------- admin: settings + stats ---------------- */
@@ -560,7 +663,7 @@ async function start() {
   }
   // Eagerly initialise the admin account so a first-run password is printed now.
   try {
-    getAdminRecord();
+    await getAdminRecord();
   } catch (e) {
     console.error(`\n  ADMIN WARNING: ${e.message}\n`);
   }

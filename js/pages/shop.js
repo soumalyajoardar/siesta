@@ -3,7 +3,7 @@ import { CATEGORIES, discountPct, inStock, lowStock } from "../data.js";
 import { catalog } from "../api.js";
 import { events as liveEvents, siteHero, siteSettings, siteCatImage, siteCollectionImage } from "../api.js";
 import { productById, getWish, toggleWish, addToCart, pushRecent, getRecent, getPrefs, setPrefs } from "../store.js";
-import { esc, inr, productArt, photoArt, hasAltVisual, heroArt, catArt, observeReveals, setTitle, toast, openModal, flyToCart } from "../ui.js";
+import { esc, inr, productArt, photoArt, hasAltVisual, heroArt, catArt, observeReveals, setTitle, toast, openModal, flyToCart, stars } from "../ui.js";
 
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label || id;
 
@@ -484,6 +484,21 @@ export function ProductPage(id) {
     }));
     bindCards(root);
     observeReveals(root);
+    // Live verified-purchase reviews for this product.
+    fetch(`/api/products/${encodeURIComponent(p.id)}/reviews`).then((r) => r.json()).then((list) => {
+      const box = root.querySelector("#pdpRevBody");
+      if (!box) return;
+      if (!Array.isArray(list) || !list.length) {
+        box.innerHTML = "<p>No verified-purchase reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
+        return;
+      }
+      const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
+      box.innerHTML = `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
+        list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
+    }).catch(() => {
+      const box = root.querySelector("#pdpRevBody");
+      if (box) box.innerHTML = "<p class='muted'>Reviews are unavailable right now.</p>";
+    });
   });
 
   const wished = getWish().includes(p.id);
@@ -521,7 +536,7 @@ export function ProductPage(id) {
         <div class="acc"><button class="acc-head" aria-expanded="false">Material & care <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p><strong>Material:</strong> ${esc(p.material)}</p><p><strong>Care:</strong> ${esc(p.care)}</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Shipping & returns <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>Ships within 24 hours. Free shipping over ₹1,499. 7-day returns on unworn items with tags. See <a href="#/shipping">Shipping</a> and <a href="#/returns">Returns</a>.</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Specifications <span aria-hidden="true">+</span></button><div class="acc-body" hidden><table class="spec-table"><tr><th>SKU</th><td>${esc(p.sku)}</td></tr><tr><th>Category</th><td>${esc(catLabel(p.category))}</td></tr><tr><th>Gender</th><td>${esc(p.gender)}</td></tr><tr><th>Fit</th><td>As described above</td></tr></table></div></div>
-        <div class="acc"><button class="acc-head" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>No verified-purchase reviews yet for this style. Reviews will appear here after verified purchases.</p></div></div>
+        <div class="acc"><button class="acc-head" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" id="pdpRevBody" hidden><p class="muted">Loading reviews…</p></div></div>
       </div>
     </div>
     <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="#/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>
