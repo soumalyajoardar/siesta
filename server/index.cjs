@@ -1,0 +1,527 @@
+"use strict";
+// Siesta backend: serves the storefront + admin dashboard and exposes a REST API.
+// - Storage backend: Supabase (Postgres + Storage) when SUPABASE_URL and
+//   SUPABASE_SERVICE_KEY are set, otherwise local JSON files. See store.js.
+// - Public API re-validates prices, coupons and stock server-side (never trusts the client).
+// - Admin API (bearer token) manages products, images, orders, coupons, settings.
+// Run:  npm start   (or: PORT=3000 node server/index.cjs)
+const path = require("path");
+const fs = require("fs");
+require("./env.cjs"); // load .env (if present) before anything reads config
+const { execSync } = require("child_process");
+const express = require("express");
+const multer = require("multer");
+const store = require("./store.cjs");
+const sbs = require("./supabase.cjs");
+const { verify, issueToken, requireAdmin, rateLimited, recordFailure } = require("./auth.cjs");
+
+const ROOT = path.join(__dirname, "..");
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const app = express();
+app.use(express.json({ limit: "1mb" }));
+// Storefront data changes from the admin — never let browsers cache API JSON.
+app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
+
+// Eagerly initialise the admin account so a first-run password is printed now.
+require("./auth.cjs").getAdminRecord();
+
+const STAGES = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
+const CATEGORIES = ["tshirts", "shirts", "jackets", "hoodies", "jeans", "pants", "shorts", "sweatshirts"];
+
+/* ---------------- helpers ---------------- */
+const { getProducts, getCoupons, getOrders, getSettings, getEvents } = store;
+const notExpired = (c) => new Date(c.expires + "T23:59:59") >= new Date();
+const discountPct = (p) => (p.mrp > p.price ? Math.round((1 - p.price / p.mrp) * 100) : 0);
+// Allowed image locations: local uploads, project images folder, Supabase bucket.
+const storeImgBase = () => (process.env.SUPABASE_URL ? `${String(process.env.SUPABASE_URL).replace(/\/$/, "")}/storage/v1/object/public/product-images/` : "");
+const imgUrl = (u) => typeof u === "string" && (u.startsWith("/uploads/") || u.startsWith("/images/") || (storeImgBase() && u.startsWith(storeImgBase())));
+
+function sanitizeProduct(b, isNew) {
+  const str = (v, max = 200) => String(v ?? "").slice(0, max).trim();
+  const num = (v, fb = 0) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : fb);
+  const p = {
+    name: str(b.name, 120),
+    category: CATEGORIES.includes(b.category) ? b.category : "tshirts",
+    gender: ["men", "women", "unisex"].includes(b.gender) ? b.gender : "unisex",
+    price: num(b.price, 999),
+    mrp: num(b.mrp, num(b.price, 999)),
+    colors: Array.isArray(b.colors) ? b.colors.slice(0, 6).map((c) => ({ name: str(c.name, 40) || "Default", hex: /^#[0-9a-fA-F]{6}$/.test(c.hex) ? c.hex : "#999999" })) : [{ name: "Default", hex: "#999999" }],
+    sizes: Array.isArray(b.sizes) ? b.sizes.map((s) => str(s, 6)).filter(Boolean).slice(0, 10) : ["M", "L"],
+    stock: num(b.stock, 0),
+    material: str(b.material, 200),
+    care: str(b.care, 300),
+    desc: str(b.desc, 1000),
+    details: Array.isArray(b.details) ? b.details.map((d) => str(d, 200)).filter(Boolean).slice(0, 10) : [],
+    isNew: !!b.isNew,
+    bestseller: !!b.bestseller,
+    images: Array.isArray(b.images) ? b.images.filter(imgUrl).slice(0, 8) : [],
+  };
+  if (p.mrp < p.price) p.mrp = p.price;
+  if (!p.name) throw new Error("Product name is required.");
+  if (!p.sizes.length) throw new Error("At least one size is required.");
+  if (isNew) {
+    p.id = str(b.id, 80).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || ("p-" + Date.now().toString(36));
+    p.sku = str(b.sku, 24) || ("SS-" + Date.now().toString(36).toUpperCase());
+    p.added = new Date().toISOString().slice(0, 10);
+    p.popularity = 50;
+  }
+  return p;
+}
+
+/* ---------------- public API ---------------- */
+app.get("/api/health", (req, res) => res.json({ ok: true, store: "Siesta", backend: store.backend(), time: new Date().toISOString() }));
+
+app.get("/api/products", async (req, res) => {
+  try {
+    let list = await getProducts();
+    const { category, gender, q } = req.query;
+    if (category) list = list.filter((p) => p.category === category);
+    if (gender) list = list.filter((p) => p.gender === gender);
+    if (q) {
+      const n = String(q).toLowerCase();
+      list = list.filter((p) => [p.name, p.category, p.gender, p.desc, p.material].join(" ").toLowerCase().includes(n));
+    }
+    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p) })));
+  } catch (e) { res.status(500).json({ error: "Could not load products." }); }
+});
+
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const p = (await getProducts()).find((x) => x.id === req.params.id);
+    if (!p) return res.status(404).json({ error: "Product not found." });
+    res.json({ ...p, discountPct: discountPct(p) });
+  } catch (e) { res.status(500).json({ error: "Could not load the product." }); }
+});
+
+app.get("/api/coupons", async (req, res) => {
+  try {
+    res.json((await getCoupons()).filter((c) => c.active !== false && notExpired(c)));
+  } catch (e) { res.status(500).json({ error: "Could not load coupons." }); }
+});
+
+app.get("/api/settings", async (req, res) => {
+  try { res.json(await getSettings()); }
+  catch (e) { res.status(500).json({ error: "Could not load settings." }); }
+});
+
+// Create a COD order. Totals are computed HERE from database prices.
+app.post("/api/orders", async (req, res) => {
+  try {
+    const { items, address, coupon } = req.body || {};
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Your cart is empty." });
+    const products = await getProducts();
+    const settings = await getSettings();
+    const a = address || {};
+    for (const f of ["name", "phone", "line1", "city", "state", "pin"]) {
+      if (!String(a[f] || "").trim()) return res.status(400).json({ error: `Delivery address is incomplete (missing ${f}).` });
+    }
+    if (!/^\d{6}$/.test(String(a.pin).trim())) return res.status(400).json({ error: "Enter a valid 6-digit PIN code." });
+
+    let subtotal = 0, mrpTotal = 0;
+    const lines = [];
+    for (const it of items) {
+      const p = products.find((x) => x.id === it.id);
+      if (!p) return res.status(400).json({ error: "A product in your cart no longer exists." });
+      const qty = Math.min(Math.max(1, Number(it.qty) || 1), 10);
+      if (!p.sizes.includes(it.size)) return res.status(400).json({ error: `Size ${it.size} is not available for ${p.name}.` });
+      if ((p.stock ?? 0) < qty) return res.status(400).json({ error: `Only ${p.stock} left of ${p.name}. Please adjust quantity.` });
+      subtotal += p.price * qty;
+      mrpTotal += p.mrp * qty;
+      lines.push({ id: p.id, name: p.name, price: p.price, qty, size: it.size, color: it.color || p.colors[0].name });
+    }
+    void mrpTotal;
+    let discount = 0, couponCode = null;
+    if (coupon) {
+      const c = (await getCoupons()).find((x) => x.code === String(coupon).toUpperCase() && x.active !== false);
+      if (!c) return res.status(400).json({ error: "This coupon code isn't valid." });
+      if (!notExpired(c)) return res.status(400).json({ error: "This coupon has expired." });
+      if (subtotal < c.minSubtotal) return res.status(400).json({ error: `This coupon needs a minimum order of ₹${c.minSubtotal}.` });
+      discount = c.type === "pct" ? Math.round((subtotal * c.value) / 100) : c.value;
+      discount = Math.min(discount, subtotal);
+      couponCode = c.code;
+    }
+    const shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : settings.shipFlat;
+    const total = subtotal - discount + shipping;
+    if (total > settings.codMaxOrder) return res.status(400).json({ error: `COD is available up to ₹${settings.codMaxOrder.toLocaleString("en-IN")}.` });
+
+    // Decrement stock.
+    const updated = products.map((p) => {
+      const line = lines.find((l) => l.id === p.id);
+      return line ? { ...p, stock: p.stock - line.qty } : p;
+    });
+    await store.saveProducts(updated);
+
+    const orderNo = `SS-2026-${Math.floor(100000 + Math.random() * 899999)}`;
+    const now = new Date().toISOString();
+    const order = {
+      orderNo, createdAt: now, items: lines,
+      address: { name: a.name, phone: a.phone, line1: a.line1, land: a.land || "", city: a.city, state: a.state, pin: a.pin, country: "India" },
+      payment: "Cash on Delivery", coupon: couponCode,
+      amounts: { subtotal, discount, shipping, total },
+      status: "confirmed",
+      timeline: [{ stage: "confirmed", at: now, note: "Order placed · Cash on Delivery" }],
+    };
+    await store.saveOrders([order, ...(await getOrders())]);
+    res.status(201).json(order);
+  } catch (e) {
+    res.status(500).json({ error: "Could not create the order. Please try again." });
+  }
+});
+
+// Public tracking by order number.
+app.get("/api/orders/:orderNo", async (req, res) => {
+  try {
+    const o = (await getOrders()).find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
+    if (!o) return res.status(404).json({ error: "Order not found." });
+    res.json(o);
+  } catch (e) { res.status(500).json({ error: "Could not load the order." }); }
+});
+
+// Public pre-shipment cancel (order numbers are unguessable; same exposure as tracking).
+app.post("/api/orders/:orderNo/cancel", async (req, res) => {
+  try {
+    const orders = await getOrders();
+    const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
+    if (!o) return res.status(404).json({ error: "Order not found." });
+    if (!["confirmed", "processing"].includes(o.status)) return res.status(400).json({ error: "This order can no longer be cancelled (already packed/shipped)." });
+    o.status = "cancelled";
+    o.timeline.push({ stage: "cancelled", at: new Date().toISOString(), note: "Cancelled by customer" });
+    // Restock.
+    const products = (await getProducts()).map((p) => {
+      const line = o.items.find((l) => l.id === p.id);
+      return line ? { ...p, stock: p.stock + line.qty } : p;
+    });
+    await store.saveProducts(products);
+    await store.saveOrders(orders);
+    res.json(o);
+  } catch (e) { res.status(500).json({ error: "Could not cancel the order." }); }
+});
+
+/* ---------------- admin auth ---------------- */
+app.post("/api/admin/login", (req, res) => {
+  const ip = req.ip;
+  if (rateLimited(ip)) return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+  const { username, password } = req.body || {};
+  if (username === "admin" && verify(password)) {
+    return res.json({ token: issueToken() });
+  }
+  recordFailure(ip);
+  res.status(401).json({ error: "Invalid username or password." });
+});
+
+/* ---------------- admin: products ---------------- */
+app.get("/api/admin/products", requireAdmin, async (req, res) => {
+  try { res.json(await getProducts()); }
+  catch (e) { res.status(500).json({ error: "Could not load products." }); }
+});
+app.post("/api/admin/products", requireAdmin, async (req, res) => {
+  try {
+    const products = await getProducts();
+    const p = sanitizeProduct(req.body, true);
+    if (products.some((x) => x.id === p.id)) return res.status(409).json({ error: "A product with this ID already exists." });
+    await store.saveProducts([p, ...products]);
+    res.status(201).json(p);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
+  try {
+    const products = await getProducts();
+    const i = products.findIndex((x) => x.id === req.params.id);
+    if (i < 0) return res.status(404).json({ error: "Product not found." });
+    const keep = products[i];
+    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, sku: req.body.sku || keep.sku, added: keep.added, popularity: keep.popularity ?? 50 };
+    await store.saveProducts(products);
+    res.json(products[i]);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
+  try {
+    const products = await getProducts();
+    if (!products.some((x) => x.id === req.params.id)) return res.status(404).json({ error: "Product not found." });
+    await store.saveProducts(products.filter((x) => x.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not delete the product." }); }
+});
+
+/* ---------------- admin: image uploads ---------------- */
+// Files land in memory, then go to Supabase Storage (Supabase mode) or the
+// local uploads folder (JSON mode). Same response shape either way.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 8 },
+  fileFilter: (req, file, cb) => {
+    const ok = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(file.mimetype)
+      && [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"].includes(path.extname(file.originalname).toLowerCase());
+    cb(ok ? null : new Error("Only JPG, PNG, WebP, GIF or AVIF images are allowed."), ok);
+  },
+});
+app.post("/api/admin/upload", requireAdmin, (req, res) => {
+  upload.array("images", 8)(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    try {
+      const files = req.files || [];
+      if (store.backend() === "supabase") {
+        const out = [];
+        for (const f of files) {
+          const url = await sbs.uploadImage(f.buffer, f.originalname, f.mimetype);
+          out.push({ url, name: f.originalname, size: f.size });
+        }
+        return res.status(201).json(out);
+      }
+      const out = files.map((f) => {
+        const ext = path.extname(f.originalname).toLowerCase();
+        const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+        fs.writeFileSync(path.join(UPLOAD_DIR, filename), f.buffer);
+        return { url: `/uploads/${filename}`, name: f.originalname, size: f.size };
+      });
+      res.status(201).json(out);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+});
+app.get("/api/admin/uploads", requireAdmin, async (req, res) => {
+  try {
+    if (store.backend() === "supabase") return res.json(await sbs.listImages());
+    const files = fs.readdirSync(UPLOAD_DIR)
+      .filter((f) => !f.startsWith("."))
+      .map((f) => { const st = fs.statSync(path.join(UPLOAD_DIR, f)); return { url: `/uploads/${f}`, name: f, size: st.size, at: st.mtime }; })
+      .sort((a, b) => new Date(b.at) - new Date(a.at));
+    res.json(files);
+  } catch (e) { res.status(500).json({ error: "Could not list images." }); }
+});
+app.delete("/api/admin/uploads/:name", requireAdmin, async (req, res) => {
+  try {
+    const name = path.basename(req.params.name);
+    if (store.backend() === "supabase") {
+      // Supabase URLs end with the plain filename; local ones are filenames already.
+      await sbs.deleteImage(name);
+      return res.json({ ok: true });
+    }
+    const fp = path.join(UPLOAD_DIR, name);
+    if (!fp.startsWith(UPLOAD_DIR) || !fs.existsSync(fp)) return res.status(404).json({ error: "File not found." });
+    fs.unlinkSync(fp);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Project images folder listing (files dropped into /images by hand).
+app.get("/api/admin/site-images", requireAdmin, (req, res) => {
+  const dir = path.join(ROOT, "images");
+  fs.mkdirSync(dir, { recursive: true });
+  const files = fs.readdirSync(dir)
+    .filter((f) => !f.startsWith(".") && /\.(jpe?g|png|webp|gif|avif)$/i.test(f))
+    .map((f) => { const st = fs.statSync(path.join(dir, f)); return { url: `/images/${f}`, name: f, size: st.size, at: st.mtime }; })
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
+  res.json(files);
+});
+
+/* ---------------- public events ---------------- */
+function isLiveEvent(e, now = Date.now()) {
+  if (!e || e.active === false) return false;
+  if (e.startsAt && new Date(e.startsAt).getTime() > now) return false;
+  if (e.endsAt && new Date(e.endsAt).getTime() < now) return false;
+  return true;
+}
+app.get("/api/events", async (req, res) => {
+  try {
+    res.json((await getEvents()).filter((e) => isLiveEvent(e)).sort((a, b) => (a.sort || 0) - (b.sort || 0)));
+  } catch (e) { res.status(500).json({ error: "Could not load events." }); }
+});
+
+/* ---------------- admin: events ---------------- */
+const safeLink = (u) => (typeof u === "string" && (/^#\//.test(u) || /^https?:\/\//i.test(u)) ? u.slice(0, 300) : "#/shop");
+function sanitizeEvent(b, isNew) {
+  const str = (v, max = 300) => String(v ?? "").slice(0, max).trim();
+  const e = {
+    title: str(b.title, 120),
+    subtitle: str(b.subtitle, 200),
+    description: str(b.description, 1000),
+    badge: str(b.badge, 60),
+    image: imgUrl(b.image) ? b.image : "",
+    gallery: Array.isArray(b.gallery) ? b.gallery.filter(imgUrl).slice(0, 8) : [],
+    cta: str(b.cta, 40) || "Shop Now",
+    link: safeLink(b.link),
+    startsAt: b.startsAt || "",
+    endsAt: b.endsAt || "",
+    active: b.active !== false,
+    sort: Math.max(0, Math.round(Number(b.sort) || 0)),
+  };
+  if (!e.title) throw new Error("Event title is required.");
+  if (e.startsAt && e.endsAt && new Date(e.startsAt) > new Date(e.endsAt)) throw new Error("Start date must be before end date.");
+  if (isNew) e.id = str(b.id, 60).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || ("ev-" + Date.now().toString(36));
+  return e;
+}
+app.get("/api/admin/events", requireAdmin, async (req, res) => {
+  try { res.json(await getEvents()); }
+  catch (e) { res.status(500).json({ error: "Could not load events." }); }
+});
+app.post("/api/admin/events", requireAdmin, async (req, res) => {
+  try {
+    const list = await getEvents();
+    const e = sanitizeEvent(req.body, true);
+    if (list.some((x) => x.id === e.id)) return res.status(409).json({ error: "An event with this ID already exists." });
+    await store.saveEvents([...list, e]);
+    res.status(201).json(e);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put("/api/admin/events/:id", requireAdmin, async (req, res) => {
+  try {
+    const list = await getEvents();
+    const i = list.findIndex((x) => x.id === req.params.id);
+    if (i < 0) return res.status(404).json({ error: "Event not found." });
+    list[i] = { ...sanitizeEvent(req.body, false), id: list[i].id };
+    await store.saveEvents(list);
+    res.json(list[i]);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete("/api/admin/events/:id", requireAdmin, async (req, res) => {
+  try {
+    await store.saveEvents((await getEvents()).filter((x) => x.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not delete the event." }); }
+});
+
+/* ---------------- admin: coupons ---------------- */
+app.get("/api/admin/coupons", requireAdmin, async (req, res) => {
+  try { res.json(await getCoupons()); }
+  catch (e) { res.status(500).json({ error: "Could not load coupons." }); }
+});
+app.post("/api/admin/coupons", requireAdmin, async (req, res) => {
+  try {
+    const list = await getCoupons();
+    const code = String(req.body.code || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{4,16}$/.test(code)) return res.status(400).json({ error: "Code must be 4–16 letters/digits." });
+    if (list.some((c) => c.code === code)) return res.status(409).json({ error: "Coupon already exists." });
+    const c = { code, type: req.body.type === "flat" ? "flat" : "pct", value: Math.max(1, Math.round(Number(req.body.value) || 0)), minSubtotal: Math.max(0, Math.round(Number(req.body.minSubtotal) || 0)), expires: req.body.expires || "2027-12-31", label: String(req.body.label || "").slice(0, 120), active: true };
+    if (!c.value) return res.status(400).json({ error: "Discount value is required." });
+    await store.saveCoupons([c, ...list]);
+    res.status(201).json(c);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.put("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
+  try {
+    const list = await getCoupons();
+    const i = list.findIndex((c) => c.code === req.params.code.toUpperCase());
+    if (i < 0) return res.status(404).json({ error: "Coupon not found." });
+    list[i] = { ...list[i], ...req.body, code: list[i].code };
+    await store.saveCoupons(list);
+    res.json(list[i]);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
+  try {
+    await store.saveCoupons((await getCoupons()).filter((c) => c.code !== req.params.code.toUpperCase()));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not delete the coupon." }); }
+});
+
+/* ---------------- admin: orders ---------------- */
+app.get("/api/admin/orders", requireAdmin, async (req, res) => {
+  try { res.json(await getOrders()); }
+  catch (e) { res.status(500).json({ error: "Could not load orders." }); }
+});
+app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
+  try {
+    const orders = await getOrders();
+    const o = orders.find((x) => x.orderNo === req.params.orderNo);
+    if (!o) return res.status(404).json({ error: "Order not found." });
+    const { status } = req.body;
+    if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
+    o.status = status;
+    o.timeline.push({ stage: status, at: new Date().toISOString(), note: "Updated by store admin" });
+    await store.saveOrders(orders);
+    res.json(o);
+  } catch (e) { res.status(500).json({ error: "Could not update the order." }); }
+});
+
+/* ---------------- admin: settings + stats ---------------- */
+app.get("/api/admin/settings", requireAdmin, async (req, res) => {
+  try { res.json(await getSettings()); }
+  catch (e) { res.status(500).json({ error: "Could not load settings." }); }
+});
+app.put("/api/admin/settings", requireAdmin, async (req, res) => {
+  try {
+    const s = { ...(await getSettings()), ...req.body };
+    s.freeShipThreshold = Math.max(0, Math.round(Number(s.freeShipThreshold) || 0));
+    s.shipFlat = Math.max(0, Math.round(Number(s.shipFlat) || 0));
+    await store.saveSettings(s);
+    res.json(s);
+  } catch (e) { res.status(500).json({ error: "Could not save settings." }); }
+});
+app.get("/api/admin/stats", requireAdmin, async (req, res) => {
+  try {
+    const orders = await getOrders();
+    const products = await getProducts();
+    const live = orders.filter((o) => o.status !== "cancelled");
+    const revenue = live.reduce((s, o) => s + (o.amounts?.total || 0), 0);
+    const byStatus = {};
+    orders.forEach((o) => { byStatus[o.status] = (byStatus[o.status] || 0) + 1; });
+    const lowStock = products.filter((p) => (p.stock ?? 0) <= 5).map((p) => ({ id: p.id, name: p.name, stock: p.stock }));
+    res.json({ orders: orders.length, revenue, byStatus, products: products.length, lowStock, recent: orders.slice(0, 5) });
+  } catch (e) { res.status(500).json({ error: "Could not load stats." }); }
+});
+
+/* ---------------- static: storefront, uploads, admin ---------------- */
+// NOTE: server/, node_modules/ and package.json are deliberately NOT served.
+// Only the public storefront assets, uploads and the admin UI are exposed.
+app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d" }));
+// Project images folder: drop JPG/PNG/WebP files here (via Explorer/Finder)
+// and reference them as /images/your-file.webp from any product.
+const IMAGES_DIR = path.join(ROOT, "images");
+fs.mkdirSync(IMAGES_DIR, { recursive: true });
+app.use("/images", express.static(IMAGES_DIR, { maxAge: "7d" }));
+app.use("/admin", express.static(path.join(ROOT, "admin")));
+app.get("/admin", (req, res) => res.sendFile(path.join(ROOT, "admin", "index.html")));
+for (const dir of ["css", "js", "assets"]) {
+  // No stale-code surprises: browsers revalidate every time (cheap 304s via ETag).
+  app.use("/" + dir, express.static(path.join(ROOT, dir), { maxAge: 0, etag: true }));
+}
+app.get(["/", "/index.html"], (req, res) => res.sendFile(path.join(ROOT, "index.html")));
+app.get("/robots.txt", (req, res) => res.sendFile(path.join(ROOT, "robots.txt")));
+app.get("/sitemap.xml", (req, res) => res.sendFile(path.join(ROOT, "sitemap.xml")));
+
+/* ---------------- boot ---------------- */
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0"; // LAN-reachable: open http://<this-PC-IP>:PORT from your phone
+function lanIP() {
+  try {
+    const nets = require("os").networkInterfaces();
+    for (const list of Object.values(nets)) {
+      for (const n of list || []) {
+        if (n.family === "IPv4" && !n.internal && !n.address.startsWith("169.254.")) return n.address;
+      }
+    }
+  } catch {}
+  return "localhost";
+}
+
+async function start() {
+  // Seed local JSON on a truly fresh install (also the migration source).
+  if (!fs.existsSync(path.join(__dirname, "data", "products.json"))) {
+    console.log("Seeding database from storefront catalog…");
+    execSync("node server/seed.js", { cwd: ROOT, stdio: "inherit" });
+  }
+  if (store.backend() === "supabase") {
+    console.log("Store backend: Supabase");
+    try {
+      await sbs.checkConnection();
+      if (await store.migrateIfNeeded()) {
+        console.log("  local JSON data migrated into Supabase (JSON files left untouched as backup)");
+      }
+    } catch (e) {
+      console.error(`\n  SUPABASE ERROR: ${e.message}`);
+      console.error("  Run supabase/schema.sql in your Supabase SQL Editor, set SUPABASE_URL + SUPABASE_SERVICE_KEY, and restart.");
+      console.error("  (JSON fallback is used only when those two variables are absent.)\n");
+      process.exit(1);
+    }
+  } else {
+    console.log("Store backend: local JSON files (set SUPABASE_URL + SUPABASE_SERVICE_KEY to use Supabase)");
+  }
+  app.listen(PORT, HOST, () => {
+    const ip = lanIP();
+    console.log(`\n  SIESTA running [${store.backend()}] →  local:  http://localhost:${PORT}  (admin: /admin)`);
+    console.log(`                                    phone:   http://${ip}:${PORT}  (same Wi-Fi)\n`);
+  });
+}
+start();
