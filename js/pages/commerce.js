@@ -50,8 +50,7 @@ export function CartPage() {
       <aside class="card" aria-label="Order summary">
         <h2 style="margin:0 0 .4rem">Order summary</h2>
         ${t.coupon ? `<div class="applied-coupon"><span>✓ ${esc(t.coupon.code)} — ${esc(t.coupon.code === "FLAT200" ? "₹200 off" : t.coupon.value + "% off")}</span><button class="link-btn" id="rmCoupon">Remove</button></div>`
-        : `<form id="couponForm" class="coupon-row"><label class="visually-hidden" for="couponInput">Coupon code</label><input id="couponInput" class="input" placeholder="Coupon code (try WELCOME10)" autocomplete="off"/><button class="btn btn-outline btn-sm" type="submit">Apply</button></form>
-        <p class="muted" style="font-size:.8rem">Available: WELCOME10 · SIESTA15 · FLAT200</p>`}
+        : `<form id="couponForm" class="coupon-row"><label class="visually-hidden" for="couponInput">Coupon code</label><input id="couponInput" class="input" placeholder="Coupon code" autocomplete="off"/><button class="btn btn-outline btn-sm" type="submit">Apply</button></form>`}
         <div class="summary-row"><span>Subtotal</span><span>${inr(t.subtotal)}</span></div>
         <div class="summary-row"><span>MRP savings</span><span style="color:var(--success)">− ${inr(t.savings)}</span></div>
         ${t.discount ? `<div class="summary-row"><span>Coupon discount</span><span style="color:var(--success)">− ${inr(t.discount)}</span></div>` : ""}

@@ -12,7 +12,7 @@ export const BUSINESS = {
   cin: "REPLACE_ME — CIN if applicable",
   grievanceOfficer: "REPLACE_ME — name + email (Consumer Protection E-commerce Rules)",
   social: { instagram: "", x: "", youtube: "" }, // add only real URLs
-  hours: "Mon–Sat, 10am–6pm IST (proposed)",
+  hours: "Mon–Sat, 10am–6pm IST",
 };
 
 export const STORE = {
