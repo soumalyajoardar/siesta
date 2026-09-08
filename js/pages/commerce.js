@@ -70,6 +70,7 @@ let coState = { step: 1, addrId: "", address: null, saveAddr: true };
 export function resetCheckout() { coState = { step: 1, addrId: "", address: null, saveAddr: true }; }
 
 export function CheckoutPage() {
+  // NOTE: logged-out visitors never reach here — the router sends them home.
   const t = S.totals();
   setTitle("Checkout — Siesta", "Delivery address, payment and order review.");
   if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Nothing to check out</h2><p class="muted">Your cart is empty.</p><a class="btn btn-dark" href="#/shop">Browse Products</a></div></div>`;

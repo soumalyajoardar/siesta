@@ -37,13 +37,14 @@ export function LoginPage(query) {
     <div class="field" style="margin-top:.7rem"><label for="lPw">Password <span class="req" style="color:var(--clay)">*</span></label><div class="pass-wrap"><input id="lPw" name="password" class="input" type="password" autocomplete="current-password" required/><button type="button" id="showPw" aria-label="Show password">Show</button></div><span class="err"></span></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:.7rem 0"><label class="check-row"><input type="checkbox" name="remember" checked/> Remember me</label><a class="link-btn" href="#/forgot">Forgot password?</a></div>
     <button class="btn btn-dark btn-block" type="submit">Log In Securely</button>
-    <p class="muted" style="font-size:.86rem;text-align:center">New to Siesta? <a href="#/register">Create an account</a></p>
+    <p class="muted" style="font-size:.86rem;text-align:center">New to Siesta? <a href="#/register${next !== "/account" ? "?next=" + encodeURIComponent(next) : ""}">Create an account</a></p>
     <p class="muted" style="font-size:.78rem">Demo architecture: accounts are stored only in this browser with hashed passwords. A production backend is required before launch.</p>
   </form></div></div></div>`;
 }
 
-export function RegisterPage() {
+export function RegisterPage(query) {
   setTitle("Create Account — Siesta", "Join Siesta for faster checkout and order tracking.");
+  const next = (query && query.get("next")) || "/account";
   setTimeout(() => {
     const f = document.getElementById("regForm");
     f.onsubmit = async (e) => {
@@ -59,7 +60,7 @@ export function RegisterPage() {
       if (!f.terms.checked) { toast("Please accept the Terms to create an account.", "error"); return; }
       const btn = f.querySelector('[type="submit"]');
       btn.classList.add("is-loading"); btn.disabled = true;
-      try { await S.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, marketing: !!f.marketing.checked }); toast("Account created. Welcome to Siesta."); location.hash = "#/account"; }
+      try { await S.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, marketing: !!f.marketing.checked }); toast("Account created. Welcome to Siesta."); location.hash = "#" + next; }
       catch (err) { toast(err.message, "error"); }
       finally { btn.classList.remove("is-loading"); btn.disabled = false; }
     };
@@ -74,7 +75,7 @@ export function RegisterPage() {
     <label class="check-row" style="margin-top:.7rem"><input type="checkbox" name="terms"/> I agree to the <a href="#/terms">Terms & Conditions</a> *</label>
     <label class="check-row"><input type="checkbox" name="marketing"/> Email me about new drops and offers (optional, not pre-checked). See <a href="#/privacy">Privacy Policy</a>.</label>
     <button class="btn btn-dark btn-block" type="submit" style="margin-top:.8rem">Create Account</button>
-    <p class="muted" style="font-size:.86rem;text-align:center">Already have an account? <a href="#/login">Log in</a></p>
+    <p class="muted" style="font-size:.86rem;text-align:center">Already have an account? <a href="#/login${next !== "/account" ? "?next=" + encodeURIComponent(next) : ""}">Log in</a></p>
   </form></div></div></div>`;
 }
 

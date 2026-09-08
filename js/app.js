@@ -22,6 +22,15 @@ function render() {
   barStart();
   const { segs, query } = parseHash();
   closeMobileNav();
+  // Logged-out visitors get the main page for account-only routes —
+  // no dead ends, no login walls on guessed URLs.
+  const PROTECTED = ["account", "orders", "checkout", "success"];
+  if (PROTECTED.includes(segs[0]) && !S.currentUser()) {
+    toast("Please log in to continue.");
+    location.replace("#/");
+    barDone();
+    return;
+  }
   let html = "";
   const r = segs.join("/");
   if (segs.length === 0) html = HomePage();
@@ -33,12 +42,12 @@ function render() {
   else if (segs[0] === "track") html = TrackPage(segs[1] ? decodeURIComponent(segs[1]) : "");
   else if (r === "wishlist") html = WishlistPage();
   else if (r === "login") html = LoginPage(query);
-  else if (r === "register") html = RegisterPage();
+  else if (r === "register") html = RegisterPage(query);
   else if (r === "forgot") html = ForgotPage();
   else if (segs[0] === "account") html = AccountPage(segs[1] || "overview");
   else if (r === "orders") { location.hash = "#/account/orders"; return; }
   else if (["about", "contact", "faq", "shipping", "returns", "privacy", "terms", "cookies"].includes(segs[0])) html = StaticPages[segs[0]]();
-  else html = StaticPages.notfound();
+  else { location.replace("#/"); barDone(); return; }
 
   app.innerHTML = html;
   observeReveals(app);
@@ -82,6 +91,13 @@ export function updateCounts() {
   wc.hidden = w === 0; wc.textContent = w;
   if (prevCart !== -1 && n > prevCart) popBadge();
   prevCart = n;
+  // Logged-out visitors go to login, members to their account.
+  const ab = document.getElementById("accountBtn");
+  if (ab) {
+    const logged = !!S.currentUser();
+    ab.setAttribute("href", logged ? "#/account" : "#/login");
+    ab.setAttribute("aria-label", logged ? "My account" : "Log in to your account");
+  }
 }
 document.addEventListener("siesta:counts", updateCounts);
 document.addEventListener("siesta:reroute", render);
