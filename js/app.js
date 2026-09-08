@@ -2,7 +2,7 @@
 import { catalog } from "./api.js";
 import { loadCatalog, loadCoupons, loadEvents, loadSettings } from "./api.js";
 import * as S from "./store.js";
-import { esc, toast, observeReveals, isEmail, popBadge, reducedMotion } from "./ui.js";
+import { esc, toast, observeReveals, isEmail, popBadge, reducedMotion, setTitle } from "./ui.js";
 import { HomePage, ShopPage, ProductPage } from "./pages/shop.js";
 import { CartPage, CheckoutPage, SuccessPage, TrackPage, WishlistPage, resetCheckout } from "./pages/commerce.js";
 import { LoginPage, RegisterPage, ForgotPage, AccountPage, StaticPages } from "./pages/account.js";
@@ -37,7 +37,7 @@ async function render() {
       barDone();
       return;
     }
-  } catch { /* offline/static: storefront stays up */ }
+  } catch (err) { console.warn("Maintenance check skipped:", err?.message || err); /* offline/static: storefront stays up */ }
   document.body.classList.remove("maintenance");
   // Logged-out visitors get the main page for account-only routes —
   // no dead ends, no login walls on guessed URLs.
