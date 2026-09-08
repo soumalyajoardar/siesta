@@ -1,6 +1,6 @@
 // App shell: hash router, header/search/mobile nav, counts, cookies, newsletter.
 import { catalog } from "./api.js";
-import { loadCatalog, loadCoupons, loadEvents, loadSettings } from "./api.js";
+import { loadCatalog, loadCoupons, loadEvents, loadSettings, siteSettings } from "./api.js";
 import * as S from "./store.js";
 import { esc, toast, observeReveals, isEmail, popBadge, reducedMotion, setTitle } from "./ui.js";
 import { HomePage, ShopPage, ProductPage } from "./pages/shop.js";
@@ -22,17 +22,16 @@ async function render() {
   barStart();
   const { segs, query } = parseHash();
   closeMobileNav();
-  // Maintenance mode: the whole storefront becomes one page. Checked fresh
-  // on every navigation so toggling it in admin takes effect immediately.
+  // Maintenance mode: the whole storefront becomes one page. The cached flag
+  // paints instantly (no flash of the store); a fresh fetch then confirms it.
   // (Admin dashboard is a separate page and always stays reachable.)
+  const cached = siteSettings() || {};
+  if (cached.maintenance && cached.maintenance.enabled) showMaintenance(cached.maintenance);
   try {
     const s = await loadSettings();
     const m = (s && s.maintenance) || {};
     if (m.enabled) {
-      document.body.classList.add("maintenance");
-      setTitle("Under Maintenance — Siesta", "Siesta is briefly under maintenance.");
-      app.innerHTML = maintenancePage(m);
-      document.getElementById("retryBtn")?.addEventListener("click", () => location.reload());
+      showMaintenance(m);
       window.scrollTo({ top: 0, behavior: "auto" });
       barDone();
       return;
@@ -76,6 +75,12 @@ async function render() {
 }
 
 // ---------- Maintenance page (no links out — just a retry) ----------
+function showMaintenance(m) {
+  document.body.classList.add("maintenance");
+  setTitle("Under Maintenance — Siesta", "Siesta is briefly under maintenance.");
+  app.innerHTML = maintenancePage(m);
+  document.getElementById("retryBtn")?.addEventListener("click", () => location.reload());
+}
 function maintenancePage(m) {
   const title = (m.title || "").trim() || "We'll be right back.";
   const msg = (m.message || "").trim() || "Siesta is undergoing scheduled maintenance to improve your shopping experience. Everything — your cart, wishlist and orders — is safe. Please check back in a little while.";
@@ -282,7 +287,7 @@ function hideSplash() {
 (async () => {
   try {
     await Promise.allSettled([loadCatalog(), loadCoupons(), loadEvents(), loadSettings()]);
-    render();
+    await render(); // awaited so the splash never lifts before the page (or maintenance) is painted
     updateCounts();
     await Promise.race([
       (async () => {
