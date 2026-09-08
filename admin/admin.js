@@ -694,8 +694,29 @@
         </form></div>`;
       $("#sForm").addEventListener("submit", async (e) => {
         e.preventDefault();
-        try { await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) }); toast("Settings saved."); }
+        const patch = Object.fromEntries(new FormData(e.target).entries());
+        try { await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(patch) }); Object.assign(s, patch); toast("Settings saved."); }
         catch (err) { toast(err.message, "error"); }
+      });
+      const m = s.maintenance || {};
+      const mCard = document.createElement("div");
+      mCard.className = "card";
+      mCard.innerHTML = `<h3>Maintenance mode <span class="muted small">— when on, the whole store shows one maintenance page and no new orders can be placed. This dashboard keeps working.</span></h3>
+        <form id="mForm">
+          <label class="check-row" style="margin-bottom:.7rem"><input type="checkbox" name="enabled" ${m.enabled ? "checked" : ""} /> <strong>Maintenance mode is ON</strong></label>
+          <div class="field"><label>Heading (optional)</label><input class="input" name="title" value="${esc(m.title || "")}" placeholder="We'll be right back." /></div>
+          <div class="field"><label>Detail message (optional)</label><textarea class="input" name="message" rows="3" placeholder="What should shoppers be told?">${esc(m.message || "")}</textarea></div>
+          <button class="btn btn-dark btn-sm" type="submit">Save Maintenance Settings</button>
+        </form>`;
+      $("#view").appendChild(mCard);
+      mCard.querySelector("#mForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(e.target).entries());
+        try {
+          await api("/api/admin/settings", { method: "PUT", body: JSON.stringify({ ...s, maintenance: { enabled: !!v.enabled, title: String(v.title || ""), message: String(v.message || "") } }) });
+          toast(v.enabled ? "Maintenance mode is ON — the store now shows one page." : "Maintenance mode is OFF — the store is back.");
+          vSettings();
+        } catch (err) { toast(err.message, "error"); }
       });
       $("#pwForm").addEventListener("submit", async (e) => {
         e.preventDefault();

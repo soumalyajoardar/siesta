@@ -21,6 +21,7 @@ write("settings.json", {
   announcement: "Complimentary shipping on orders over ₹1,499 · COD available across India",
   hero: { eyebrow: "", title: "", message: "", badge: "", image: "" },
   heroSlides: [],
+  maintenance: { enabled: false, title: "", message: "" },
   categoryImages: {},
   collectionImages: {},
 });

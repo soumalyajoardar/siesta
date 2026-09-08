@@ -18,10 +18,27 @@ function parseHash() {
   return { segs, query: new URLSearchParams(queryPart || "") };
 }
 
-function render() {
+async function render() {
   barStart();
   const { segs, query } = parseHash();
   closeMobileNav();
+  // Maintenance mode: the whole storefront becomes one page. Checked fresh
+  // on every navigation so toggling it in admin takes effect immediately.
+  // (Admin dashboard is a separate page and always stays reachable.)
+  try {
+    const s = await loadSettings();
+    const m = (s && s.maintenance) || {};
+    if (m.enabled) {
+      document.body.classList.add("maintenance");
+      setTitle("Under Maintenance — Siesta", "Siesta is briefly under maintenance.");
+      app.innerHTML = maintenancePage(m);
+      document.getElementById("retryBtn")?.addEventListener("click", () => location.reload());
+      window.scrollTo({ top: 0, behavior: "auto" });
+      barDone();
+      return;
+    }
+  } catch { /* offline/static: storefront stays up */ }
+  document.body.classList.remove("maintenance");
   // Logged-out visitors get the main page for account-only routes —
   // no dead ends, no login walls on guessed URLs.
   const PROTECTED = ["account", "orders", "checkout", "success"];
@@ -58,7 +75,18 @@ function render() {
   barDone();
 }
 
-// ---------- Route progress bar (cosmetic, completes fast) ----------
+// ---------- Maintenance page (no links out — just a retry) ----------
+function maintenancePage(m) {
+  const title = (m.title || "").trim() || "We'll be right back.";
+  const msg = (m.message || "").trim() || "Siesta is undergoing scheduled maintenance to improve your shopping experience. Everything — your cart, wishlist and orders — is safe. Please check back in a little while.";
+  return `<div class="page page-narrow"><div class="maint-card" role="status">
+    <p class="logo" aria-hidden="true">SIESTA<span class="logo-dot">.</span></p>
+    <p><span class="pill warn">Under maintenance</span></p>
+    <h1 class="h-display" style="font-size:2.2rem">${esc(title)}</h1>
+    <p class="lead" style="margin:0 auto">${esc(msg)}</p>
+    <button class="btn btn-dark" id="retryBtn" style="margin-top:1.4rem">Check Again</button>
+  </div></div>`;
+}
 const routeBar = document.getElementById("routeBar");
 function barStart() {
   if (reducedMotion()) return;

@@ -318,6 +318,11 @@ li.active .tick{border-color:var(--forest)}
 .tl-progress{height:8px;border-radius:99px;background:var(--sand-2);overflow:hidden;margin:.4rem 0 1.2rem}
 .tl-progress span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--forest),#4C7A6C);animation:barGrow 1s var(--ease) both}
 @keyframes barGrow{from{width:0!important}}
+/* Maintenance mode: storefront chrome hidden, single card shown */
+body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .site-footer,body.maintenance .to-top{display:none}
+.maint-card{background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-sm);text-align:center;padding:clamp(2rem,6vw,3.5rem) clamp(1.2rem,4vw,2.5rem);margin-top:2rem;animation:pageIn .3s var(--ease)}
+.maint-card .logo{font-size:1.4rem;margin:0}
+
 /* Tracking hero + details polish */
 .track-card{overflow:hidden}
 .track-hero{display:flex;gap:1rem;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}

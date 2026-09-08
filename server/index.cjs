@@ -122,6 +122,20 @@ function sanitizeProduct(b, isNew) {
 /* ---------------- public API ---------------- */
 app.get("/api/health", (req, res) => res.json({ ok: true, store: "Siesta", backend: store.backend(), time: new Date().toISOString() }));
 
+// Maintenance gate: when enabled from Admin → Settings, the storefront shows
+// a maintenance page and no new orders/reviews can be created (admin stays usable).
+async function maintenanceOn() {
+  try {
+    const s = await getSettings();
+    return Boolean(s && s.maintenance && s.maintenance.enabled);
+  } catch {
+    return false;
+  }
+}
+function maintenanceBlock() {
+  return { error: "Siesta is under maintenance right now. Please try again in a little while." };
+}
+
 // Verified-purchase rating summaries, attached to product responses.
 function ratingMap(reviews) {
   const m = {};
@@ -173,6 +187,7 @@ app.get("/api/products/:id/reviews", async (req, res) => {
 // Write a review — only for items in DELIVERED orders, one per order+product.
 app.post("/api/reviews", async (req, res) => {
   try {
+    if (await maintenanceOn()) return res.status(503).json(maintenanceBlock());
     const { orderNo, productId, rating, title, text } = req.body || {};
     if (!orderNo || !productId) return res.status(400).json({ error: "Order number and product are required." });
     const r = Math.round(Number(rating));
@@ -218,6 +233,7 @@ app.get("/api/settings", async (req, res) => {
 // Create a COD order. Totals are computed HERE from database prices.
 app.post("/api/orders", async (req, res) => {
   try {
+    if (await maintenanceOn()) return res.status(503).json(maintenanceBlock());
     const { items, address, coupon } = req.body || {};
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Your cart is empty." });
     const products = await getProducts();

@@ -75,6 +75,9 @@ backups only and are not deployed.
   orders; publish publicly on product pages, delete abuse here
 - **Settings** — thresholds, announcement bar, and the admin password change
   (stored scrypt-hashed in the database, same store as everything else)
+- **Maintenance mode** (Settings) — one toggle turns the whole store into a
+  single maintenance page with your own heading/message; orders and reviews
+  are blocked server-side too, admin keeps working
 - **Events** — create sales, festive edits and drops with banner + gallery
   image uploads, button links, badges and start/end dates; live events appear
   in a "Happening now" section on the store homepage
