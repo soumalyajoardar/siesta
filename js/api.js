@@ -34,6 +34,18 @@ export async function loadCatalog() {
     const list = await getJSON("/api/products");
     if (Array.isArray(list) && list.length) catalogCache = list;
   } catch { /* offline/static fallback */ }
+  // Warm the connection to the image host before first paint needs it.
+  try {
+    const u = (catalogCache || []).find((p) => p.images && p.images[0])?.images[0];
+    if (u && u.startsWith("http")) {
+      const origin = new URL(u).origin;
+      if (!document.querySelector(`link[rel="preconnect"][href="${origin}"]`)) {
+        const l = document.createElement("link");
+        l.rel = "preconnect"; l.href = origin; l.crossOrigin = "";
+        document.head.appendChild(l);
+      }
+    }
+  } catch { /* non-fatal */ }
   return catalog();
 }
 export const catalog = () => catalogCache || PRODUCTS;

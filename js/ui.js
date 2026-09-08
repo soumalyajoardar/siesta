@@ -1,6 +1,14 @@
 // UI primitives: toasts, modals, original SVG product art, formatting, a11y helpers.
 export const esc = (s = "") => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
+// Lightweight delivery variants for Supabase-hosted photos (1.7MB PNG → ~60KB
+// WebP). Local /uploads + /images files pass through untouched.
+export function imgVariant(url, w = 800, q = 70) {
+  if (typeof url !== "string" || !url.includes("/storage/v1/object/public/")) return url;
+  const [base, hash] = url.split("#");
+  return base.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") +
+    `?width=${w}&quality=${q}&format=webp` + (hash ? `#${hash}` : "");
+}
 // Star display (typographic, screen-reader labelled — never faked).
 export const stars = (n, label) => {
   const full = Math.max(0, Math.min(5, Math.round(Number(n) || 0)));
@@ -100,14 +108,17 @@ export function productArt(p, colorIdx = 0, opts = {}) {
   // illustration underneath still shows (graceful degradation).
   const photo = p.images && p.images[Math.min(colorIdx, p.images.length - 1)];
   if (!photo) return svg;
-  return `<span class="art-wrap">${svg}<img class="art-photo" src="${esc(photo)}" alt="${esc(label)}" loading="lazy" onerror="this.remove()" /></span>`;
+  const w = opts.w || 600;
+  return `<span class="art-wrap">${svg}<img class="art-photo" src="${esc(imgVariant(photo, w))}" alt="${esc(label)}" loading="${opts.loading || "lazy"}" onerror="this.remove()" /></span>`;
 }
 
 // Photo at an explicit index (for galleries), falling back to illustration.
-export function photoArt(p, idx = 0) {
+// Pass full=true for the zoom lightbox (original file, uncropped).
+export function photoArt(p, idx = 0, full = false) {
   const all = p.images || [];
   if (!all.length) return productArt(p, 0);
-  const src = all[idx % all.length];
+  const raw = all[idx % all.length];
+  const src = full ? raw : imgVariant(raw, 1000, 75);
   return `<span class="art-wrap">${productArt({ ...p, images: [] }, 0)}<img class="art-photo" src="${esc(src)}" alt="${esc(p.name)} — photo ${idx + 1}" onerror="this.remove()" /></span>`;
 }
 export const hasAltVisual = (p) => Boolean((p.images && p.images[1]) || (!(p.images && p.images.length) && p.colors.length > 1));
@@ -131,7 +142,7 @@ export function catArt(id, img = "") {
   const [cat, hex] = map[id] || ["tshirts", "#E8E0D2"];
   const svg = `<svg viewBox="0 0 300 240" style="width:100%;height:100%"><rect width="300" height="240" fill="${bgFor(id)}"/><ellipse cx="150" cy="90" rx="110" ry="70" fill="rgba(255,255,255,.5)"/><g transform="translate(75,-30) scale(.5)">${garmentShape(cat, hex)}</g></svg>`;
   // Admin-uploaded photo overlays the illustration (removed if it fails to load).
-  const photo = img ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.remove()" />` : "";
+  const photo = img ? `<img src="${esc(imgVariant(img, 800))}" alt="" loading="lazy" onerror="this.remove()" />` : "";
   return `<span class="cat-art" aria-hidden="true">${svg}${photo}</span>`;
 }
 

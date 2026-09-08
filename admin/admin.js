@@ -28,9 +28,30 @@
     return data;
   }
 
+  // Shrink big uploads in-browser (WebP, max 1400px) so store photos stay
+  // light. GIFs (possibly animated) and small files pass through untouched.
+  async function compressImage(file) {
+    try {
+      if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+      if (file.size < 400 * 1024 || !("createImageBitmap" in window)) return file;
+      const bmp = await createImageBitmap(file);
+      const max = 1400;
+      const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      if (scale >= 1) { bmp.close?.(); return file; }
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * scale);
+      c.height = Math.round(bmp.height * scale);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const blob = await new Promise((res) => c.toBlob(res, "image/webp", 0.82));
+      if (!blob || blob.size >= file.size) return file;
+      return new File([blob], file.name.replace(/\.[a-z0-9]+$/i, "") + ".webp", { type: "image/webp" });
+    } catch { return file; }
+  }
+
   async function uploadFiles(files) {
     const fd = new FormData();
-    [...files].forEach((f) => fd.append("images", f));
+    for (const f of [...files]) fd.append("images", await compressImage(f));
     const r = await fetch("/api/admin/upload", { method: "POST", headers: { Authorization: "Bearer " + getToken() }, body: fd });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || "Upload failed.");

@@ -3,7 +3,7 @@ import { CATEGORIES, discountPct, inStock, lowStock } from "../data.js";
 import { catalog } from "../api.js";
 import { events as liveEvents, siteHero, siteSettings, siteCatImage, siteCollectionImage } from "../api.js";
 import { productById, getWish, toggleWish, addToCart, pushRecent, getRecent, getPrefs, setPrefs } from "../store.js";
-import { esc, inr, productArt, photoArt, hasAltVisual, heroArt, catArt, observeReveals, setTitle, toast, openModal, flyToCart, stars } from "../ui.js";
+import { esc, inr, productArt, photoArt, hasAltVisual, heroArt, catArt, observeReveals, setTitle, toast, openModal, flyToCart, stars, imgVariant } from "../ui.js";
 
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label || id;
 
@@ -21,7 +21,7 @@ export function eventSection() {
     <div class="section-head"><div><span class="eyebrow">Events & drops</span><h2 id="evH">Happening now</h2></div></div>
     <div class="event-grid">${list.map((e, i) => `
       <article class="event-card reveal" style="transition-delay:${Math.min(i * 70, 280)}ms">
-        ${e.image ? `<a class="event-media" href="${esc(e.link)}" aria-label="${esc(e.title)}"><img src="${esc(e.image)}" alt="${esc(e.title)}" loading="lazy" onerror="this.remove()" /></a>` : ""}
+        ${e.image ? `<a class="event-media" href="${esc(e.link)}" aria-label="${esc(e.title)}"><img src="${esc(imgVariant(e.image, 800))}" alt="${esc(e.title)}" loading="lazy" onerror="this.remove()" /></a>` : ""}
         <div class="event-copy">
           ${e.badge ? `<span class="badge sale">${esc(e.badge)}</span>` : ""}
           <h3>${esc(e.title)}</h3>
@@ -40,7 +40,7 @@ export function cardHTML(p, i = 0) {
   const stockTxt = !inStock(p) ? "Out of stock" : lowStock(p) ? `Only ${p.stock} left` : "In stock";
   return `<article class="p-card reveal" style="transition-delay:${Math.min(i * 40, 320)}ms">
     <div class="p-media">
-      <a href="#/product/${p.id}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p)}</a>
+      <a href="#/product/${p.id}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p, 0, { loading: i < 4 ? "eager" : "lazy" })}</a>
       ${hasAltVisual(p) ? `<span class="p-alt" aria-hidden="true">${productArt(p, 1)}</span>` : ""}
       <div class="p-badges">
         ${off > 0 ? `<span class="badge sale">−${off}%</span>` : ""}
@@ -99,7 +99,7 @@ export function quickView(id) {
   if (!p) return;
   const off = discountPct(p);
   const { el } = openModal(p.name, `<div style="display:grid;grid-template-columns:140px 1fr;gap:1rem;align-items:start">
-    <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">${productArt(p)}</div>
+    <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">${productArt(p, 0, { w: 400 })}</div>
     <div><p class="muted" style="margin:0">${esc(catLabel(p.category))}</p>
     <p style="margin:.4rem 0"><strong>${inr(p.price)}</strong> ${p.mrp > p.price ? `<s class="muted">${inr(p.mrp)}</s> <span class="off">${off}% off</span>` : ""}</p>
     <p class="muted" style="font-size:.88rem">${esc(p.desc)}</p>
@@ -219,7 +219,7 @@ export function HomePage() {
   const slides = (rawSlides.length ? rawSlides : [{}]).map((b) => ({ ...HERO_DEFAULT, ...Object.fromEntries(Object.entries(b || {}).filter(([, v]) => String(v ?? "").trim() !== "")) }));
   const heroSlideHTML = (b, i) => {
     const photos = (Array.isArray(b.images) && b.images.length ? b.images : (b.image ? [b.image] : [])).filter((u) => typeof u === "string" && u).slice(0, 6);
-    const stack = (cls, alt) => photos.map((src, k) => `<img class="${cls}${k === 0 ? " on" : ""}" data-pi="${k}" src="${esc(src)}" alt="${esc(alt)}"${cls === "hero-fg" && k > 0 ? ' aria-hidden="true"' : ""}${i === 0 && k === 0 && cls === "hero-fg" ? ' fetchpriority="high"' : ' loading="lazy"'} onerror="this.remove()" />`).join("");
+    const stack = (cls, alt) => photos.map((src, k) => `<img class="${cls}${k === 0 ? " on" : ""}" data-pi="${k}" src="${esc(imgVariant(src, 1200, 70))}" alt="${esc(alt)}"${cls === "hero-fg" && k > 0 ? ' aria-hidden="true"' : ""}${i === 0 && k === 0 && cls === "hero-fg" ? ' fetchpriority="high"' : ' loading="lazy"'} onerror="this.remove()" />`).join("");
     return `
       <div class="hero-slide${i === 0 ? " active" : ""}" data-slide="${i}"${i === 0 ? "" : ' aria-hidden="true"'}>
         <div class="hero-copy">
@@ -251,6 +251,22 @@ export function HomePage() {
     </section>`;
 
   setTimeout(() => { const root = document.getElementById("app"); bindCards(root); observeReveals(root); initHero(root, slides.length); });
+  // Preload the LCP hero photo + first-row covers so first paint already has them.
+  setTimeout(() => {
+    try {
+      const pre = (href, hi) => {
+        if (!href || document.querySelector(`link[rel="preload"][href="${CSS.escape(href)}"]`)) return;
+        const l = document.createElement("link");
+        l.rel = "preload"; l.as = "image"; l.href = href;
+        if (hi) l.fetchPriority = "high";
+        document.head.appendChild(l);
+      };
+      const firstSlide = slides[0] || {};
+      const heroPhotos = firstSlide.images && firstSlide.images.length ? firstSlide.images : (firstSlide.image ? [firstSlide.image] : []);
+      if (heroPhotos[0]) pre(imgVariant(heroPhotos[0], 1200, 70), true);
+      newArr.slice(0, 4).forEach((p) => { if (p.images && p.images[0]) pre(imgVariant(p.images[0], 600, 70)); });
+    } catch {}
+  }, 0);
   return `<div class="page">
     ${heroHTML}
 
@@ -269,7 +285,7 @@ export function HomePage() {
         ${[["men", "Men", "Cut for him"], ["women", "Women", "Cut for her"], ["unisex", "Unisex", "Cut for everyone"]].map(([g, label, blurb], i) => {
           const n = ALL.filter((p) => p.gender === g).length;
           const photo = siteCollectionImage(g);
-          const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(photo)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}</span>`;
+          const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onerror="this.remove()" />` : ""}</span>`;
           return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="#/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
         }).join("")}
       </div>
@@ -437,7 +453,7 @@ export function ProductPage(id) {
   const recent = getRecent().filter((x) => x.id !== p.id).slice(0, 4);
   const photos = p.images || [];
   const thumbsHTML = photos.length
-    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(src)}" alt="" style="width:100%;height:100%;object-fit:cover" /></button>`).join("")
+    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(imgVariant(src, 200, 60))}" alt="" style="width:100%;height:100%;object-fit:cover" /></button>`).join("")
     : p.colors.map((c, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View in ${esc(c.name)}"><span aria-hidden="true">${productArt(p, i)}</span></button>`).join("");
   setTimeout(() => {
     const root = document.getElementById("app");
@@ -484,7 +500,7 @@ export function ProductPage(id) {
     const gMain = root.querySelector("#gMain");
     const openLightbox = () => {
       const lb = document.createElement("div");      lb.className = "lightbox";
-      lb.innerHTML = `${photos.length ? photoArt(p, cIdx) : productArt(p, cIdx)}<button class="btn btn-light btn-sm" aria-label="Close image viewer">Close ✕</button>`;
+      lb.innerHTML = `${photos.length ? photoArt(p, cIdx, true) : productArt(p, cIdx)}<button class="btn btn-light btn-sm" aria-label="Close image viewer">Close ✕</button>`;
       document.body.appendChild(lb);
       const close = () => { lb.remove(); gMain.focus(); };
       lb.querySelector("button").onclick = close;

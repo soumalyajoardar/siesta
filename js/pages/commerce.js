@@ -2,7 +2,7 @@
 import { STORE } from "../config.js";
 import { productById } from "../store.js";
 import * as S from "../store.js";
-import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openModal } from "../ui.js";
+import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openModal, imgVariant } from "../ui.js";
 import { apiHealth, serverCreateOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
 import { cardHTML, bindCards } from "./shop.js";
 
@@ -35,7 +35,7 @@ export function CartPage() {
     <div class="split">
       <div class="card" aria-label="Cart items">
         ${t.lines.map((l) => `<div class="cart-line">
-          <a class="cart-thumb" href="#/product/${l.id}" aria-label="View ${esc(l.product.name)}">${productArt(l.product)}</a>
+          <a class="cart-thumb" href="#/product/${l.id}" aria-label="View ${esc(l.product.name)}">${productArt(l.product, 0, { w: 400 })}</a>
           <div><h3><a href="#/product/${l.id}">${esc(l.product.name)}</a></h3>
             <p class="line-meta">Size ${esc(l.size)} · ${esc(l.color)} · SKU ${esc(l.product.sku)}</p>
             <p class="line-meta">${(l.product.stock ?? 0) <= 5 ? `<strong style="color:var(--warning)">Only ${l.product.stock} left</strong>` : "In stock"}</p>
@@ -329,7 +329,7 @@ function trackHTML(o) {
   const thumbFor = (i) => {
     const p = productById(i.id);
     const src = p && p.images && p.images[0];
-    if (src) return `<img class="t-item-thumb" src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()" />`;
+    if (src) return `<img class="t-item-thumb" src="${esc(imgVariant(src, 200, 60))}" alt="" loading="lazy" onerror="this.remove()" />`;
     if (p) return `<span class="t-item-thumb t-item-art" aria-hidden="true">${productArt(p)}</span>`;
     return `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
   };
