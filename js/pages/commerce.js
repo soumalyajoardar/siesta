@@ -3,7 +3,7 @@ import { STORE } from "../config.js";
 import { productById } from "../store.js";
 import * as S from "../store.js";
 import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openModal, imgVariant } from "../ui.js";
-import { apiHealth, serverCreateOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
+import { apiHealth, serverCreateOrder, serverFetchOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
 import { cardHTML, bindCards } from "./shop.js";
 
 // Set right before a coupon apply/remove re-render so the changed rows flash.
@@ -321,11 +321,30 @@ export function TrackPage(orderNo) {
     ${orders.length ? `<h2>Recent orders</h2>${orders.slice(0, 5).map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}` : `<p class="muted">No orders on this device yet.</p>`}</div>`;
   }
   setTimeout(async () => {
-    await refreshMirror(orderNo); // live admin status when online
-    const raw = S.getOrders().find((x) => x.orderNo.toLowerCase() === orderNo.toLowerCase());
     const el = document.getElementById("trackWrap");
     if (!el) return;
-    if (!raw) { el.innerHTML = `<div class="empty"><h2>We couldn't find ${esc(orderNo)}</h2><p class="muted">Check the order number on your confirmation screen or in My Orders.</p><a class="btn btn-dark" href="#/track">Try Again</a></div>`; return; }
+    const show404 = () => {
+      el.innerHTML = `<div class="page-narrow"><div class="empty"><span class="eyebrow">Error 404</span><h2>We couldn't find this order</h2><p class="muted">No order exists with number ${esc(orderNo)}. It may have been removed — check the number and try again.</p><div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" href="#/track">Try Again</a><a class="btn btn-light" href="#/shop">Continue Shopping</a></div></div></div>`;
+    };
+    let raw = S.getOrders().find((x) => x.orderNo.toLowerCase() === orderNo.toLowerCase());
+    try {
+      if (await apiHealth()) {
+        try {
+          raw = await mirrorOrder(await serverFetchOrder(orderNo));
+        } catch (e) {
+          if (e && e.status === 404 && raw && raw._remote) {
+            // Was mirrored here but is gone on the server (deleted in admin) — prune and 404.
+            S.removeOrderLocal(raw.orderNo);
+            raw = null;
+          }
+          // Purely-local (never synced) orders and blips still render below.
+        }
+      } else {
+        await refreshMirror(orderNo);
+        raw = S.getOrders().find((x) => x.orderNo.toLowerCase() === orderNo.toLowerCase()) || raw;
+      }
+    } catch { /* fall through to local copy */ }
+    if (!raw) { show404(); return; }
     const o = S.orderWithProgress(raw);
     el.innerHTML = trackHTML(o);
     el.querySelectorAll("[data-review]").forEach((b) => (b.onclick = () => openReviewModal(o.orderNo, o.items[Number(b.dataset.review)])));

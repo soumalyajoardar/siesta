@@ -340,6 +340,11 @@ export function cancelOrder(no) {
   const all = getOrders().map((o) => (o.orderNo === no ? { ...o, status: "cancelled", timeline: [...o.timeline, { stage: "cancelled", at: new Date().toISOString(), note: "Cancelled by customer" }] } : o));
   write(K.orders, all); emit();
 }
+// Drop a server-mirrored order that no longer exists remotely (admin-deleted).
+// Purely-local (never-synced) orders are always kept.
+export function removeOrderLocal(orderNo) {
+  write(K.orders, getOrders().filter((o) => o.orderNo !== orderNo)); emit();
+}
 
 // ---------- Misc persistence ----------
 export const pushRecent = (id) => {
