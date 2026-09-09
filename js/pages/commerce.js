@@ -14,9 +14,9 @@ function breakdownHTML(t, flash = false) {
   const f = flash ? " flash" : "";
   return `
     <div class="summary-row"><span>MRP Total</span><span>${inr(t.mrpTotal)}</span></div>
-    <div class="summary-row${f}"><span>Less: MRP Discount</span><span style="color:var(--success)">− ${inr(t.savings)}</span></div>
+    <div class="summary-row${f}"><span>Discount</span><span style="color:var(--success)">− ${inr(t.savings)}</span></div>
     <div class="summary-row"><span>Offer Price</span><span>${inr(t.subtotal)}</span></div>
-    ${t.coupon && t.discount ? `<div class="summary-row${f}"><span>Less: Coupon (${esc(t.coupon.code)})</span><span style="color:var(--success)">− ${inr(t.discount)}</span></div>` : ""}
+    ${t.coupon && t.discount ? `<div class="summary-row${f}"><span>Coupon (${esc(t.coupon.code)})</span><span style="color:var(--success)">− ${inr(t.discount)}</span></div>` : ""}
     <div class="summary-row"><span>Delivery Charge</span><span>${t.shipping ? inr(t.shipping) : "Free"}</span></div>
     ${t.roundOff ? `<div class="summary-row"><span>Round Off</span><span>${signed(t.roundOff)}</span></div>` : ""}
     <div class="summary-row total${f}"><span>Sub Total</span><span>${inr(t.total)}</span></div>`;

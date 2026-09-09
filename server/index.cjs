@@ -282,9 +282,9 @@ app.post("/api/orders", async (req, res) => {
       couponCode = c.code;
     }
     const shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : settings.shipFlat;
-    // Round the payable total to the nearest ₹10 (standard round-off line).
+    // Round DOWN to the nearest ₹5 (fives table) — never adds, may leave unchanged.
     const preRound = subtotal - discount + shipping;
-    const total = Math.round(preRound / 10) * 10;
+    const total = Math.floor(preRound / 5) * 5;
     const roundOff = total - preRound;
     if (total > settings.codMaxOrder) return res.status(400).json({ error: `COD is available up to ₹${settings.codMaxOrder.toLocaleString("en-IN")}.` });
 

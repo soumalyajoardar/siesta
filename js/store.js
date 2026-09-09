@@ -247,9 +247,9 @@ export function totals() {
     discount = Math.min(discount, subtotal);
   }
   const shipping = lines.length === 0 || subtotal - discount >= STORE.freeShipThreshold ? 0 : STORE.shipFlat;
-  // Round the payable total to the nearest ₹10 (matches the server exactly).
+  // Round DOWN to the nearest ₹5 (matches the server exactly; never adds).
   const preRound = Math.max(0, subtotal - discount + shipping);
-  const total = lines.length === 0 ? 0 : Math.round(preRound / 10) * 10;
+  const total = lines.length === 0 ? 0 : Math.floor(preRound / 5) * 5;
   const roundOff = total - preRound;
   return { lines, subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total, coupon };
 }
