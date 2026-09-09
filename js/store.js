@@ -316,21 +316,25 @@ export function createOrder({ items, address, payment, amounts }) {
   write(K.orders, all);
   return order;
 }
-// Local demo progression: advance one stage per day (capped), purely illustrative.
+// Order progress: the STORED status is always authoritative (set by admin or
+// checkout). Server-mirrored orders never fabricate stages. Purely-local
+// demo orders (offline, never synced) keep a gentle illustrative progression
+// so they don't sit frozen — clearly simulated, never courier scans.
 export function orderWithProgress(o) {
-  const ageDays = (Date.now() - new Date(o.createdAt).getTime()) / 86400000;
-  let idx = 0;
-  if (o.status !== "cancelled") {
-    idx = Math.min(STAGES.length - 1, o.timeline.length - 1 + Math.floor(ageDays));
-    // build illustrative timeline entries for elapsed stages
-    const tl = [...o.timeline];
-    for (let i = tl.length; i <= idx; i++) {
-      const at = new Date(new Date(o.createdAt).getTime() + i * 86400000).toISOString();
-      tl.push({ stage: STAGES[i], at, note: "Updated by Siesta order system (illustrative)" });
-    }
-    return { ...o, status: STAGES[idx], timeline: tl, stageIndex: idx, eta: etaFor(o.createdAt) };
+  if (o.status === "cancelled") return { ...o, stageIndex: -1, eta: "—" };
+  const storedIdx = STAGES.indexOf(o.status);
+  const safeIdx = storedIdx >= 0 ? storedIdx : 0;
+  if (o._remote) {
+    return { ...o, status: STAGES[safeIdx], stageIndex: safeIdx, eta: etaFor(o.createdAt) };
   }
-  return { ...o, stageIndex: -1, eta: "—" };
+  const ageDays = (Date.now() - new Date(o.createdAt).getTime()) / 86400000;
+  const idx = Math.min(STAGES.length - 1, o.timeline.length - 1 + Math.floor(ageDays));
+  const tl = [...o.timeline];
+  for (let i = tl.length; i <= idx; i++) {
+    const at = new Date(new Date(o.createdAt).getTime() + i * 86400000).toISOString();
+    tl.push({ stage: STAGES[i], at, note: "Updated by Siesta order system (illustrative)" });
+  }
+  return { ...o, status: STAGES[idx], timeline: tl, stageIndex: idx, eta: etaFor(o.createdAt) };
 }
 const etaFor = (iso) => {
   const d = new Date(new Date(iso).getTime() + 5 * 86400000);
