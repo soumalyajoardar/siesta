@@ -357,6 +357,8 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
 .review-cta p{margin:0 0 .7rem;font-size:.88rem}
 /* Star rating display + input */
 .stars{color:var(--gold);letter-spacing:.1em;font-size:1rem}
+.rating-jump{background:none;border:0;padding:0;cursor:pointer;font-size:.92rem;display:inline-flex;align-items:center;gap:.4rem;border-radius:6px}
+.rating-jump:hover strong{text-decoration:underline}
 .stars-input{display:flex;gap:.3rem;margin:.4rem 0}
 .stars-input button{background:none;border:0;font-size:2rem;cursor:pointer;color:var(--line-2);padding:.1rem;line-height:1;transition:transform .12s,color .12s}
 .stars-input button.lit{color:var(--gold)}

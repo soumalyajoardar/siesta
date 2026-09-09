@@ -586,6 +586,15 @@ export function ProductPage(id) {
       } else {
         const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
         setProductJsonLd(p, { avg, count: list.length });
+        const line = root.querySelector("#pdpRatingLine");
+        if (line) {
+          line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="Rated ${avg} out of 5 from ${list.length} verified reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> <span class="muted">· ${list.length} verified review${list.length === 1 ? "" : "s"}</span></button>`;
+          line.querySelector("#pdpRatingJump").onclick = () => {
+            const head = root.querySelector("#pdpRevHead");
+            if (head && head.getAttribute("aria-expanded") !== "true") head.click();
+            root.querySelector("#pdpRevBody")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          };
+        }
         box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
           list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
       }
@@ -609,6 +618,7 @@ export function ProductPage(id) {
         <span class="eyebrow">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
         <h1>${esc(p.name)}</h1>
         <p class="muted" style="margin:0">SKU ${esc(p.sku)} · ${esc(p.material)}</p>
+        <div id="pdpRatingLine" style="margin:.35rem 0 0;min-height:1.4em"></div>
         <div class="pdp-price"><span class="price">${inr(p.price)}</span>${off ? `<s class="muted">${inr(p.mrp)}</s><span class="off">${off}% off</span>` : ""}</div>
         <p class="muted" style="font-size:.86rem">Inclusive of all taxes. <a href="#/shipping">Shipping info</a></p>
         <p style="font-size:.9rem;color:var(--success);font-weight:700" role="status">${!inStock(p) ? `<span style="color:var(--danger)">Out of stock — restocking soon.</span>` : lowStock(p) ? `Only ${p.stock} left in stock — order soon.` : "In stock, ships within 24 hours."}</p>
@@ -632,7 +642,7 @@ export function ProductPage(id) {
         <div class="acc"><button class="acc-head" aria-expanded="false">Material & care <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p><strong>Material:</strong> ${esc(p.material)}</p><p><strong>Care:</strong> ${esc(p.care)}</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Shipping & returns <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>Ships within 24 hours. Free shipping over ₹1,499. 7-day returns on unworn items with tags. See <a href="#/shipping">Shipping</a> and <a href="#/returns">Returns</a>.</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Specifications <span aria-hidden="true">+</span></button><div class="acc-body" hidden><table class="spec-table"><tr><th>SKU</th><td>${esc(p.sku)}</td></tr><tr><th>Category</th><td>${esc(catLabel(p.category))}</td></tr><tr><th>Gender</th><td>${esc(p.gender)}</td></tr><tr><th>Fit</th><td>As described above</td></tr></table></div></div>
-        <div class="acc"><button class="acc-head" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" id="pdpRevBody" hidden><p class="muted">Loading reviews…</p></div></div>
+        <div class="acc"><button class="acc-head" id="pdpRevHead" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" id="pdpRevBody" hidden><p class="muted">Loading reviews…</p></div></div>
       </div>
     </div>
     <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="#/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>
