@@ -253,7 +253,7 @@
       $("#view").innerHTML = `
         <div class="toolbar"><span class="muted small">${list.length} events · only active ones in date show on the store homepage</span><span style="flex:1"></span><button class="btn btn-dark btn-sm" id="addE">+ New Event</button></div>
         ${list.map((e) => `<div class="card"><div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-          ${e.image ? `<img class="thumb" style="width:90px;height:64px;object-fit:contain;border-radius:10px;border:1px solid var(--line)" src="${esc(e.image)}" alt="" loading="lazy" />` : `<span class="thumb-ph" style="width:90px;height:64px">✦</span>`}
+          ${e.image ? `<img class="thumb" style="width:90px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--line)" src="${esc(e.image)}" alt="" loading="lazy" />` : `<span class="thumb-ph" style="width:90px;height:64px">✦</span>`}
           <div style="flex:1;min-width:200px"><strong>${esc(e.title)}</strong> ${e.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Hidden</span>'}<br />
           <span class="muted small">${esc(e.badge || e.subtitle || "")} · ${fmt(e.startsAt)} → ${fmt(e.endsAt)} · <a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.cta)}</a></span></div>
           <div class="row-actions"><button class="btn btn-light btn-sm" data-eedit="${esc(e.id)}">Edit</button><button class="btn btn-light btn-sm" data-edel="${esc(e.id)}">Delete</button></div>
