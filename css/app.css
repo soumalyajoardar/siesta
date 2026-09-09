@@ -333,6 +333,7 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
 .status-pill.is-done{background:#E5F2E8;border-color:#BFDCC6;color:var(--success)}
 .pulse-dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:dotPulse 1.8s ease-in-out infinite}
 .track-meta{margin:0;font-size:.9rem}
+.express-note{margin:.6rem 0 0;font-size:.92rem;color:var(--forest-deep);border-left:3px solid var(--gold);padding:.35rem 0 .35rem .8rem;max-width:52ch}
 .order-chip{display:inline-flex;align-items:center;gap:.55rem;background:#fff;border:1px dashed var(--line-2);border-radius:12px;padding:.5rem .8rem;cursor:pointer;font-size:.86rem;transition:border-color .15s,transform .12s}
 .order-chip:hover{border-color:var(--forest);transform:translateY(-1px)}
 .order-chip strong{letter-spacing:.02em}

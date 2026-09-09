@@ -383,7 +383,12 @@ function trackHTML(o) {
   const pct = Math.round(((o.stageIndex ?? 0) / (stages.length - 1)) * 100);
   const stepNo = Math.min((o.stageIndex ?? 0) + 1, stages.length);
   const etaDays = Math.max(0, Math.ceil((new Date(o.createdAt).getTime() + 5 * 86400000 - Date.now()) / 86400000));
-  const etaText = o.status === "delivered" ? "Delivered — enjoy!" : etaDays <= 0 ? "Arriving today" : `Arriving in ${etaDays} day${etaDays === 1 ? "" : "s"}`;
+  const isExpress = Boolean(o.express) && o.status !== "delivered";
+  const etaText = o.status === "delivered"
+    ? "Delivered — enjoy!"
+    : isExpress
+      ? `Arriving ${o.express.option === "tomorrow" ? "Tomorrow" : "Today"}`
+      : etaDays <= 0 ? "Arriving today" : `Arriving in ${etaDays} day${etaDays === 1 ? "" : "s"}`;
   return `${crumbs}
   <div class="split"><div class="card track-card">
     <div class="track-hero">
@@ -391,11 +396,11 @@ function trackHTML(o) {
         <span class="status-pill${o.status === "delivered" ? " is-done" : ""}"><span class="pulse-dot" aria-hidden="true"></span>${esc(labels[o.status] || o.status)}</span>
         <h1 class="h-display" style="font-size:1.8rem;margin:.5rem 0 .3rem">${esc(etaText)}</h1>
         <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
-        ${o.express ? `<p style="margin:.4rem 0"><span class="pill ok">⚡ Express delivery · arrives ${esc(o.express.option)}</span></p>` : ""}
+        ${isExpress ? `<p class="express-note">Good news — your order has been automatically upgraded to express delivery. Enjoy your products at the earliest with our express service.</p>` : ""}
       </div>
       <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">⧉</span></button>
     </div>
-    <div class="eta-panel"><span aria-hidden="true">▣</span><div><strong>Estimated delivery · ${esc(o.eta)}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>
+    <div class="eta-panel"><span aria-hidden="true">▣</span><div><strong>${isExpress ? `Express delivery · arriving ${esc(o.express.option)}` : `Estimated delivery · ${esc(o.eta)}`}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>
     <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
     <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
     ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review ${esc(it.name.length > 26 ? it.name.slice(0, 26) + "…" : it.name)}</button>`).join("")}</div></div>` : ""}
