@@ -500,7 +500,7 @@ export function ProductPage(id) {
   const recent = getRecent().filter((x) => x.id !== p.id).slice(0, 4);
   const photos = p.images || [];
   const thumbsHTML = photos.length
-    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(imgVariant(src, 200, 60))}" alt="" style="width:100%;height:100%;object-fit:cover" /></button>`).join("")
+    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(imgVariant(src, 200, 60))}" alt="" style="width:100%;height:100%;object-fit:contain" /></button>`).join("")
     : p.colors.map((c, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View in ${esc(c.name)}"><span aria-hidden="true">${productArt(p, i)}</span></button>`).join("");
   setTimeout(() => {
     const root = document.getElementById("app");
