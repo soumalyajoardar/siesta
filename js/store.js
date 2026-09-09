@@ -304,7 +304,7 @@ export function createOrder({ items, address, payment, amounts }) {
   const taken = new Set(getOrders().map((o) => o.orderNo));
   let orderNo = "";
   do {
-    orderNo = String(Date.now()).slice(-6) + String(Math.floor(100000 + Math.random() * 900000));
+    orderNo = String(Date.now()).slice(-8) + String(Math.floor(10000000 + Math.random() * 90000000));
   } while (taken.has(orderNo));
   const now = new Date().toISOString();
   const order = {

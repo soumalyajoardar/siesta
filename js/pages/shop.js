@@ -3,7 +3,7 @@ import { CATEGORIES, discountPct, inStock, lowStock } from "../data.js";
 import { catalog } from "../api.js";
 import { events as liveEvents, siteHero, siteSettings, siteCatImage, siteCollectionImage } from "../api.js";
 import { productById, getWish, toggleWish, addToCart, pushRecent, getRecent, getPrefs, setPrefs } from "../store.js";
-import { esc, inr, productArt, photoArt, hasAltVisual, heroArt, catArt, observeReveals, setTitle, toast, openModal, flyToCart, stars, imgVariant } from "../ui.js";
+import { esc, inr, productArt, photoArt, hasAltVisual, heroArt, catArt, observeReveals, setTitle, toast, openModal, openReviewModal, flyToCart, stars, imgVariant } from "../ui.js";
 
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label || id;
 
@@ -68,7 +68,7 @@ export function bindCards(root) {
   root.querySelectorAll("[data-wish]").forEach((b) => (b.onclick = (e) => {
     e.preventDefault();
     const added = toggleWish(b.dataset.wish);
-    toast(added ? "Saved to your wishlist." : "Removed from your wishlist.");
+    
     b.classList.remove("beat");
     void b.offsetWidth;
     if (added) b.classList.add("beat");
@@ -86,7 +86,6 @@ export function bindCards(root) {
     const size = p.sizes[Math.floor(p.sizes.length / 2)];
     try {
       addToCart(p.id, size, p.colors[0].name, 1);
-      toast(`${p.name} (${size}) added to cart.`);
       flyToCart(b);
       document.dispatchEvent(new CustomEvent("siesta:counts"));
     } catch (err) { toast(err.message, "error"); }
@@ -111,7 +110,6 @@ export function quickView(id) {
   el.querySelector("[data-qadd]")?.addEventListener("click", (e) => {
     try {
       addToCart(p.id, p.sizes[Math.floor(p.sizes.length / 2)], p.colors[0].name, 1);
-      toast(`${p.name} added to cart.`);
       flyToCart(e.currentTarget);
       document.getElementById("modalRoot").innerHTML = "";
       document.dispatchEvent(new CustomEvent("siesta:counts"));
@@ -529,13 +527,13 @@ export function ProductPage(id) {
       const added = toggleWish(p.id);
       e.currentTarget.setAttribute("aria-pressed", String(added));
       e.currentTarget.querySelector("span").textContent = added ? "Saved to Wishlist" : "Add to Wishlist";
-      toast(added ? "Saved to your wishlist." : "Removed from your wishlist.");
+      
       document.dispatchEvent(new CustomEvent("siesta:counts"));
     };
     const needSize = () => { if (!size) { root.querySelector("#sizeErr").textContent = "Please choose a size."; root.querySelector("[data-size]")?.focus(); return true; } return false; };
     root.querySelector("#addBtn").onclick = (e) => {
       if (needSize()) return;
-      try { addToCart(p.id, size, color, qty); toast(`${p.name} (${size}) added to cart.`); flyToCart(e.currentTarget); document.dispatchEvent(new CustomEvent("siesta:counts")); }
+      try { addToCart(p.id, size, color, qty); flyToCart(e.currentTarget); document.dispatchEvent(new CustomEvent("siesta:counts")); }
       catch (err) { toast(err.message, "error"); }
     };
     root.querySelector("#buyBtn").onclick = () => {
@@ -565,7 +563,7 @@ export function ProductPage(id) {
     bindCards(root);
     observeReveals(root);
     // Live verified-purchase reviews for this product.
-    fetch(`/api/products/${encodeURIComponent(p.id)}/reviews`).then((r) => r.json()).then((list) => {
+    fetch(`/api/products/${encodeURIComponent(p.id)}/reviews`).then(async (r) => r.json()).then(async (list) => {
       const box = root.querySelector("#pdpRevBody");
       if (!box) return;
       if (!Array.isArray(list) || !list.length) {
@@ -577,6 +575,17 @@ export function ProductPage(id) {
       setProductJsonLd(p, { avg, count: list.length });
       box.innerHTML = `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
         list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
+      // Bought this in a delivered order? Offer a review right here.
+      try {
+        const t = localStorage.getItem("siesta.token") || sessionStorage.getItem("siesta.token");
+        if (t && box.isConnected) {
+          const elig = await fetch(`/api/reviews/eligibility/${encodeURIComponent(p.id)}`, { headers: { Authorization: "Bearer " + t } }).then((x) => x.json()).catch(() => null);
+          if (elig && elig.eligible && box.isConnected) {
+            box.insertAdjacentHTML("afterbegin", `<div style="margin-bottom:.9rem"><button class="btn btn-dark btn-sm" id="pdpReviewBtn">Write a Review</button> <span class="muted" style="font-size:.84rem">Verified delivery on your account</span></div>`);
+            box.querySelector("#pdpReviewBtn").onclick = () => openReviewModal(elig.orderNo, { id: p.id, name: p.name });
+          }
+        }
+      } catch { /* logged out or offline: no button */ }
     }).catch(() => {
       const box = root.querySelector("#pdpRevBody");
       if (box) box.innerHTML = "<p class='muted'>Reviews are unavailable right now.</p>";

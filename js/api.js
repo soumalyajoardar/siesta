@@ -91,8 +91,13 @@ export async function loadEvents() {
 export const events = () => eventsCache || [];
 
 export async function serverCreateOrder(payload) {
+  const headers = { "Content-Type": "application/json" };
+  try {
+    const t = localStorage.getItem("siesta.token") || sessionStorage.getItem("siesta.token");
+    if (t) headers.Authorization = "Bearer " + t; // links the order to your account
+  } catch {}
   const r = await fetch("/api/orders", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers,
     body: JSON.stringify(payload),
   });
   const data = await r.json().catch(() => ({}));
@@ -106,6 +111,20 @@ export async function serverCreateOrder(payload) {
 
 export async function serverFetchOrder(orderNo) {
   return getJSON("/api/orders/" + encodeURIComponent(orderNo));
+}
+
+// My server-side order history (logged in). Falls back to [] offline/guest.
+export async function serverMyOrders() {
+  try {
+    const t = getToken();
+    if (!t) return null; // guest: caller uses local mirrors
+    const r = await fetch("/api/auth/orders", { headers: { Authorization: "Bearer " + t } });
+    const data = await r.json().catch(() => ([]));
+    if (!r.ok) return null;
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- Customer auth (server JWT; token lives per-device, account roams) ----------

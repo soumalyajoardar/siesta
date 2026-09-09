@@ -71,6 +71,48 @@ export function confirmDialog(title, message, confirmLabel = "Confirm") {
   });
 }
 
+// ---------------- WRITE A REVIEW (delivered orders only) ----------------
+// Shared by tracking, order history and product pages.
+export function openReviewModal(orderNo, item) {
+  let rating = 0;
+  const { el, close } = openModal(`Review: ${esc(item.name)}`, `
+    <div class="stars-input" role="radiogroup" aria-label="Choose a star rating">
+      ${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" role="radio" aria-checked="false" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}
+    </div>
+    <p class="err" id="rvStarErr" role="alert"></p>
+    <div class="field"><label for="rvTitle">Headline (optional)</label><input id="rvTitle" class="input" maxlength="120" placeholder="Sums it up in a line" /></div>
+    <div class="field"><label for="rvText">Your review *</label><textarea id="rvText" class="input" rows="4" maxlength="1000" placeholder="Fit, fabric, delivery experience… (min 10 characters)"></textarea></div>
+    <p class="err" id="rvErr" role="alert"></p>
+    <button class="btn btn-dark btn-block" id="rvSubmit">Submit Review</button>`);
+  const paint = () => el.querySelectorAll("[data-star]").forEach((b) => {
+    const n = Number(b.dataset.star);
+    b.classList.toggle("lit", n <= rating);
+    b.setAttribute("aria-checked", String(n === rating));
+  });
+  el.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => { rating = Number(b.dataset.star); paint(); el.querySelector("#rvStarErr").textContent = ""; }));
+  el.querySelector("#rvSubmit").onclick = async (e) => {
+    if (!rating) { el.querySelector("#rvStarErr").textContent = "Please choose a star rating."; return; }
+    const text = el.querySelector("#rvText").value.trim();
+    if (text.length < 10) { el.querySelector("#rvErr").textContent = "Please write at least a sentence (10+ characters)."; return; }
+    const btn = e.currentTarget;
+    btn.classList.add("is-loading"); btn.disabled = true;
+    try {
+      const r = await fetch("/api/reviews", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderNo, productId: item.id, rating, title: el.querySelector("#rvTitle").value.trim(), text }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Could not save your review.");
+      close();
+      toast("Thanks! Your review is now public.");
+      document.dispatchEvent(new CustomEvent("siesta:reroute"));
+    } catch (err) {
+      el.querySelector("#rvErr").textContent = err.message;
+      btn.classList.remove("is-loading"); btn.disabled = false;
+    }
+  };
+}
+
 // ---------- Original SVG product art (no third-party imagery) ----------
 const BG = ["#EFE9DD", "#E7E0D2", "#DDE3DA", "#E3D9CC", "#D8DEE4", "#E9DCD2"];
 const bgFor = (id) => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997; return BG[h % BG.length]; };
@@ -175,6 +217,12 @@ export function flyToCart(fromEl) {
   }));
   setTimeout(() => { dot.remove(); popBadge(); }, 680);
 }
+
+// Small address-type icons (home / work).
+export const addrIcon = (label = "home", size = 14) => (String(label).toLowerCase() === "work"
+  ? `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/></svg>`
+  : `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 4l8 7M6 10v9h12v-9"/></svg>`);
+export const addrLabel = (label = "home") => (String(label).toLowerCase() === "work" ? "Work" : "Home");
 
 // ---------- Skeletons / reveal ----------
 export const skeletonGrid = (n = 8) => `<div class="product-grid" aria-hidden="true">${Array.from({ length: n }).map(() => `<div><div class="skel" style="aspect-ratio:4/5"></div><div class="skel" style="height:14px;margin:.7rem 0 .4rem"></div><div class="skel" style="height:14px;width:55%"></div></div>`).join("")}</div>`;

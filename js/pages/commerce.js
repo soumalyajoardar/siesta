@@ -2,7 +2,7 @@
 import { STORE } from "../config.js";
 import { productById } from "../store.js";
 import * as S from "../store.js";
-import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openModal, imgVariant } from "../ui.js";
+import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openReviewModal, imgVariant, addrIcon, addrLabel } from "../ui.js";
 import { apiHealth, serverCreateOrder, serverFetchOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
 import { cardHTML, bindCards } from "./shop.js";
 
@@ -133,13 +133,14 @@ function wireCheckout(t) {
     if (coState.step === 1) {
       const addrs = S.getAddrs();
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Delivery address</h2>
-        ${addrs.length ? `<div class="addr-grid" role="radiogroup" aria-label="Saved addresses">${addrs.map((a) => `<label class="addr-card ${a.isDefault ? "default" : ""}"><input type="radio" name="addr" value="${a.id}" ${coState.addrId === a.id || (!coState.addrId && a.isDefault) ? "checked" : ""}/> <strong>${esc(a.name)}</strong> ${a.isDefault ? '<span class="pill">Default</span>' : ""}<br/><span class="muted">${esc(a.line1)}, ${esc(a.city)} ${esc(a.pin)}</span><br/><span class="muted">${esc(a.phone)}</span></label>`).join("")}</div>
+        ${addrs.length ? `<div class="addr-grid" role="radiogroup" aria-label="Saved addresses">${addrs.map((a) => `<label class="addr-card ${a.isDefault ? "default" : ""}"><input type="radio" name="addr" value="${a.id}" ${coState.addrId === a.id || (!coState.addrId && a.isDefault) ? "checked" : ""}/> <strong>${esc(a.name)}</strong> ${a.isDefault ? '<span class="pill">Default</span>' : ""} <span class="muted" style="font-size:.8rem">${addrIcon(a.label)} ${addrLabel(a.label)}</span><br/><span class="muted">${esc(a.line1)}, ${esc(a.city)} ${esc(a.pin)}</span><br/><span class="muted">${esc(a.phone)}</span></label>`).join("")}</div>
         <div style="display:flex;gap:.6rem;margin:.8rem 0"><button class="btn btn-dark btn-sm" id="useSaved">Deliver to This Address</button><button class="btn btn-ghost btn-sm" id="newAddrBtn">Add new address</button></div><div class="muted" style="font-size:.85rem">— or enter a new address below —</div>` : ""}
         <form id="addrForm" class="form-grid" style="margin-top:.8rem" novalidate>
           <div class="field"><label for="fName">Full name <span class="req">*</span></label><input id="fName" class="input" name="name" autocomplete="name"/><span class="err" role="alert"></span></div>
           <div class="field"><label for="fPhone">Phone <span class="req">*</span></label><input id="fPhone" class="input" name="phone" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile"/><span class="err" role="alert"></span></div>
           <div class="field full"><label for="fLine">Address (house no, street) <span class="req">*</span></label><input id="fLine" class="input" name="line1" autocomplete="street-address"/><span class="err" role="alert"></span></div>
           <div class="field"><label for="fLand">Apartment / landmark</label><input id="fLand" class="input" name="land" autocomplete="address-line2"/><span class="err" role="alert"></span></div>
+          <div class="field"><span style="font-weight:600;font-size:.88rem" id="fLabelH">Save as</span><div style="display:flex;gap:1.2rem;margin-top:.3rem" role="radiogroup" aria-labelledby="fLabelH"><label class="check-row"><input type="radio" name="label" value="home" checked/> Home</label><label class="check-row"><input type="radio" name="label" value="work"/> Work</label></div><span class="err" role="alert"></span></div>
           <div class="field"><label for="fCity">City <span class="req">*</span></label><input id="fCity" class="input" name="city" autocomplete="address-level2"/><span class="err" role="alert"></span></div>
           <div class="field"><label for="fState">State <span class="req">*</span></label><select id="fState" class="select" name="state" autocomplete="address-level1"><option value="">Select state</option>${["Andhra Pradesh", "Delhi", "Gujarat", "Haryana", "Himachal Pradesh", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh", "Uttarakhand", "West Bengal"].map((s) => `<option>${s}</option>`).join("")}</select><span class="err" role="alert"></span></div>
           <div class="field"><label for="fPin">PIN code <span class="req">*</span></label><input id="fPin" class="input" name="pin" inputmode="numeric" autocomplete="postal-code" placeholder="6 digits"/><span class="err" role="alert"></span></div>
@@ -167,7 +168,7 @@ function wireCheckout(t) {
         need("fState", !!v.state, "Select the state.");
         need("fPin", /^\d{6}$/.test(String(v.pin).trim()), "Enter a 6-digit PIN code.");
         if (!ok) { form.querySelector('[aria-invalid="true"]')?.focus(); return; }
-        const addr = { name: v.name.trim(), phone: String(v.phone).trim(), line1: v.line1.trim(), land: v.land.trim(), city: v.city.trim(), state: v.state, pin: String(v.pin).trim(), country: "India" };
+        const addr = { name: v.name.trim(), phone: String(v.phone).trim(), line1: v.line1.trim(), land: v.land.trim(), city: v.city.trim(), state: v.state, pin: String(v.pin).trim(), country: "India", label: v.label === "work" ? "work" : "home" };
         if (form.querySelector("#fSave").checked) { const saved = S.saveAddr(addr); coState.addrId = saved.id; }
         coState.address = addr; coState.step = 2; refresh();
       };
@@ -312,13 +313,24 @@ export function TrackPage(orderNo) {
   setTitle("Track Order — Siesta", "Follow your Siesta order status.");
   const orders = S.getOrders();
   if (!orderNo) {
-    setTimeout(() => {
-      const form = document.getElementById("trackForm");
-      form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) location.hash = "#/track/" + encodeURIComponent(v.toUpperCase()); });
-    });
+  setTimeout(() => {
+    const form = document.getElementById("trackForm");
+    form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) location.hash = "#/track/" + encodeURIComponent(v.toUpperCase()); });
+    // Merge server-side history so other devices' orders appear here too.
+    serverMyOrders().then(async (list) => {
+      const box = document.getElementById("trackRecent");
+      if (!list || !box) return;
+      const known = new Set(S.getOrders().map((x) => x.orderNo));
+      for (const o of list) await mirrorOrder(o);
+      const fresh = S.getOrders().slice(0, 5);
+      if (fresh.some((x) => !known.has(x.orderNo))) {
+        box.innerHTML = `<h2>Recent orders</h2>${fresh.map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}`;
+      }
+    }).catch(() => {});
+  });
     return `<div class="page page-narrow"><h1 class="h-display" style="font-size:2rem">Track your order</h1>
-    <form id="trackForm" class="coupon-row"><label class="visually-hidden" for="trackInput">Order number</label><input id="trackInput" class="input" placeholder="e.g. 483920174658"/><button class="btn btn-dark" type="submit">Track</button></form>
-    ${orders.length ? `<h2>Recent orders</h2>${orders.slice(0, 5).map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}` : `<p class="muted">No orders on this device yet.</p>`}</div>`;
+    <form id="trackForm" class="coupon-row"><label class="visually-hidden" for="trackInput">Order number</label><input id="trackInput" class="input" placeholder="e.g. 4839201717484658"/><button class="btn btn-dark" type="submit">Track</button></form>
+    ${orders.length ? `<div id="trackRecent"><h2>Recent orders</h2>${orders.slice(0, 5).map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}</div>` : `<div id="trackRecent"><p class="muted">No orders on this device yet.</p></div>`}</div>`;
   }
   setTimeout(async () => {
     const el = document.getElementById("trackWrap");
@@ -383,7 +395,7 @@ function trackHTML(o) {
     return `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
   };
   const aside = `<aside class="card track-aside"><h2 style="margin-top:0">Delivery details</h2>
-    <p class="t-addr"><span aria-hidden="true">⌂</span><span>${esc(o.address.name)}<br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
+    <p class="t-addr"><span aria-hidden="true">${addrIcon(o.address.label, 16)}</span><span>${esc(o.address.name)} <span class="muted" style="font-size:.8rem">${addrLabel(o.address.label)}</span><br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
     <h3>Items (${itemCount})</h3>${o.items.map((i) => `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${esc(i.name)} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
 
   if (o.status === "cancelled") {
@@ -412,8 +424,7 @@ function trackHTML(o) {
   <div class="split"><div class="card track-card">
     <div class="track-hero">
       <div>
-        <span class="status-pill${o.status === "delivered" ? " is-done" : ""}"><span class="pulse-dot" aria-hidden="true"></span>${esc(labels[o.status] || o.status)}</span>
-        <h1 class="h-display" style="font-size:1.8rem;margin:.5rem 0 .3rem">${esc(etaText)}</h1>
+        <h1 class="h-display" style="font-size:1.8rem;margin:.2rem 0 .3rem">${esc(etaText)}</h1>
         <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
         ${isExpress ? `<div class="express-note"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg> Express delivery</h3><p>Your order has been automatically upgraded to express delivery. Enjoy your products at the earliest with our express service.</p></div>` : ""}
       </div>
@@ -422,50 +433,9 @@ function trackHTML(o) {
     <div class="eta-panel"><span aria-hidden="true">▣</span><div><strong>${isExpress ? `Express delivery · arriving ${esc(o.express.option)}` : `Estimated delivery · ${esc(o.eta)}`}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>
     <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
     <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
-    ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review ${esc(it.name.length > 26 ? it.name.slice(0, 26) + "…" : it.name)}</button>`).join("")}</div></div>` : ""}
+    ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review Product</button>`).join("")}</div></div>` : ""}
     <p class="muted" style="font-size:.82rem">${o._remote ? "Live status from the Siesta store — updated at every step from packing to delivery." : "Status reflects Siesta's order system on this device. Live courier scans will appear here once a delivery partner is connected."}</p></div>
   ${aside}</div>`;
-}
-
-// ---------------- WRITE A REVIEW (delivered orders only) ----------------
-export function openReviewModal(orderNo, item) {
-  let rating = 0;
-  const { el, close } = openModal(`Review: ${item.name}`, `
-    <div class="stars-input" role="radiogroup" aria-label="Choose a star rating">
-      ${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" role="radio" aria-checked="false" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}
-    </div>
-    <p class="err" id="rvStarErr" role="alert"></p>
-    <div class="field"><label for="rvTitle">Headline (optional)</label><input id="rvTitle" class="input" maxlength="120" placeholder="Sums it up in a line" /></div>
-    <div class="field"><label for="rvText">Your review *</label><textarea id="rvText" class="input" rows="4" maxlength="1000" placeholder="Fit, fabric, delivery experience… (min 10 characters)"></textarea></div>
-    <p class="err" id="rvErr" role="alert"></p>
-    <button class="btn btn-dark btn-block" id="rvSubmit">Submit Review</button>`);
-  const paint = () => el.querySelectorAll("[data-star]").forEach((b) => {
-    const n = Number(b.dataset.star);
-    b.classList.toggle("lit", n <= rating);
-    b.setAttribute("aria-checked", String(n === rating));
-  });
-  el.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => { rating = Number(b.dataset.star); paint(); el.querySelector("#rvStarErr").textContent = ""; }));
-  el.querySelector("#rvSubmit").onclick = async (e) => {
-    if (!rating) { el.querySelector("#rvStarErr").textContent = "Please choose a star rating."; return; }
-    const text = el.querySelector("#rvText").value.trim();
-    if (text.length < 10) { el.querySelector("#rvErr").textContent = "Please write at least a sentence (10+ characters)."; return; }
-    const btn = e.currentTarget;
-    btn.classList.add("is-loading"); btn.disabled = true;
-    try {
-      const r = await fetch("/api/reviews", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderNo, productId: item.id, rating, title: el.querySelector("#rvTitle").value.trim(), text }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || "Could not save your review.");
-      close();
-      toast("Thanks! Your review is now public.");
-      document.dispatchEvent(new CustomEvent("siesta:reroute"));
-    } catch (err) {
-      el.querySelector("#rvErr").textContent = err.message;
-      btn.classList.remove("is-loading"); btn.disabled = false;
-    }
-  };
 }
 
 // ---------------- WISHLIST ----------------
@@ -481,10 +451,10 @@ export function WishlistPage() {
     });
     root.querySelectorAll("[data-move]").forEach((b) => (b.onclick = () => {
       const p = productById(b.dataset.move);
-      try { S.addToCart(p.id, p.sizes[Math.floor(p.sizes.length / 2)], p.colors[0].name, 1); S.toggleWish(p.id); toast(`${p.name} moved to cart.`); flyToCart(b); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }
+      try { S.addToCart(p.id, p.sizes[Math.floor(p.sizes.length / 2)], p.colors[0].name, 1); S.toggleWish(p.id); flyToCart(b); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }
       catch (e) { toast(e.message, "error"); }
     }));
-    root.querySelectorAll("[data-unwish]").forEach((b) => (b.onclick = () => { S.toggleWish(b.dataset.unwish); toast("Removed from wishlist."); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }));
+    root.querySelectorAll("[data-unwish]").forEach((b) => (b.onclick = () => { S.toggleWish(b.dataset.unwish); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }));
   });
   if (!items.length) return `<div class="page page-narrow"><div class="empty"><h2>Your wishlist is empty</h2><p class="muted">Tap the heart on any product to save it here.</p><a class="btn btn-dark" href="#/shop">Discover Products</a></div></div>`;
   return `<div class="page"><div class="section-head"><div><span class="eyebrow">${items.length} saved</span><h2 style="font-size:2rem">Wishlist</h2></div><button class="link-btn" id="clearW">Clear all</button></div>

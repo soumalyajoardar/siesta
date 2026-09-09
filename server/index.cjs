@@ -15,7 +15,7 @@ const express = require("express");
 const multer = require("multer");
 const store = require("./store.cjs");
 const sbs = require("./supabase.cjs");
-const { verify, issueToken, requireAdmin, rateLimited, recordFailure, getAdminRecord, changePassword, hasEnvPassword } = require("./auth.cjs");
+const { verify, issueToken, requireAdmin, rateLimited, recordFailure, getAdminRecord, changePassword, hasEnvPassword, requireCustomer, sanitizeCustomer, custSign } = require("./auth.cjs");
 
 const IS_VERCEL = Boolean(process.env.VERCEL);
 const ROOT = path.join(__dirname, "..");
@@ -198,6 +198,21 @@ app.get("/api/reviews/recent", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not load reviews." }); }
 });
 
+// Review eligibility for a product: latest delivered order containing it
+// without an existing review (logged-in customer only).
+app.get("/api/reviews/eligibility/:productId", requireCustomer, async (req, res) => {
+  try {
+    const pid = req.params.productId;
+    const mine = (await getOrders()).filter((o) => o.customerId && o.customerId === req.customer.id && o.status === "delivered" && (o.items || []).some((i) => i.id === pid));
+    if (!mine.length) return res.json({ eligible: false });
+    const reviews = await getReviews();
+    const open = mine.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .find((o) => !reviews.some((r) => r.orderNo === o.orderNo && r.productId === pid));
+    if (!open) return res.json({ eligible: false });
+    res.json({ eligible: true, orderNo: open.orderNo });
+  } catch (e) { res.status(500).json({ eligible: false }); }
+});
+
 // Write a review — only for items in DELIVERED orders, one per order+product.
 app.post("/api/reviews", async (req, res) => {
   try {
@@ -295,15 +310,27 @@ app.post("/api/orders", async (req, res) => {
     });
     await store.saveProducts(updated);
 
-    // Unique 12-digit order number (timestamp slice + random, collision-checked).
+    // Unique 16-digit order number (timestamp slice + random, collision-checked).
     const existingNos = new Set((await getOrders()).map((x) => x.orderNo));
     let orderNo = "";
     do {
-      orderNo = String(Date.now()).slice(-6) + String(Math.floor(100000 + Math.random() * 900000));
+      orderNo = String(Date.now()).slice(-8) + String(Math.floor(10000000 + Math.random() * 90000000));
     } while (existingNos.has(orderNo));
     const now = new Date().toISOString();
+    // Link to the customer account when a valid login token is sent (optional —
+    // guest checkout keeps working and stays anonymous).
+    let customerId = null, customerEmail = null;
+    try {
+      const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+      if (token) {
+        const { custValid } = require("./auth.cjs");
+        const cu = await custValid(token);
+        if (cu) { customerId = cu.id; customerEmail = cu.email; }
+      }
+    } catch { /* guest checkout continues anonymously */ }
     const order = {
       orderNo, createdAt: now, items: lines,
+      customerId, customerEmail,
       address: { name: a.name, phone: a.phone, line1: a.line1, land: a.land || "", city: a.city, state: a.state, pin: a.pin, country: "India" },
       payment: "Cash on Delivery", coupon: couponCode,
       amounts: { subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total },
@@ -347,7 +374,6 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
 });
 
 /* ---------------- customer auth (server-side accounts, cross-device) ---------------- */
-const { requireCustomer, sanitizeCustomer, custSign } = require("./auth.cjs");
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || ""));
 const isPhone = (v) => /^[6-9]\d{9}$/.test(String(v || "").replace(/\D/g, "").slice(-10));
 const custHash = (pw, salt) => require("crypto").scryptSync(String(pw), salt, 64).toString("hex");
@@ -394,6 +420,13 @@ app.get("/api/auth/me", requireCustomer, (req, res) => res.json({
   cart: req.customer.cart || [],
   wishlist: req.customer.wishlist || [],
 }));
+
+// My order history (server is the source of truth when logged in).
+app.get("/api/auth/orders", requireCustomer, async (req, res) => {
+  try {
+    res.json((await getOrders()).filter((o) => o.customerId && o.customerId === req.customer.id));
+  } catch (e) { res.status(500).json({ error: "Could not load your orders." }); }
+});
 
 app.patch("/api/auth/me", requireCustomer, async (req, res) => {
   try {
@@ -465,6 +498,7 @@ app.put("/api/auth/addresses", requireCustomer, async (req, res) => {
       name: String(a.name).trim(), phone: String(a.phone).trim(), line1: String(a.line1).trim(),
       land: String(a.land || "").trim(), city: String(a.city).trim(), state: String(a.state || "").trim(),
       pin: String(a.pin).trim(), country: "India", isDefault: !!a.isDefault,
+      label: String(a.label || "").toLowerCase() === "work" ? "work" : "home",
     }));
     await store.saveCustomers(list);
     res.json({ addresses: u.addresses });

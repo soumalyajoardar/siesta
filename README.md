@@ -110,7 +110,7 @@ bundled catalog with browser-local orders.
 - Coupons: `WELCOME10` · `SIESTA15` · `FLAT200` (+ `EXPIRED5` for the expired state)
 - Checkout: Address → Delivery → Payment (**Cash on Delivery only**, rest show
   "Coming soon") → Review → animated order processing → confirmation
-- Track: `#/track/483920174658` (12-digit order numbers) · Orders: `#/account/orders` (cancel pre-ship)
+- Track: `#/track/4839201717484658` (16-digit order numbers) · Orders: `#/account/orders` (cancel pre-ship)
 - Auth: Register/Login/Logout, profile, addresses, password change (SHA-256+salt,
   never plaintext), "Erase my data"
 - Cookie banner: Accept / Reject / Manage → footer "Cookie preferences"
