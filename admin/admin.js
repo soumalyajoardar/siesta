@@ -631,11 +631,23 @@
             <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
             <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
             <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+            <select class="status" data-ex="${esc(o.orderNo)}" aria-label="Express delivery for ${esc(o.orderNo)}" ${["delivered", "cancelled"].includes(o.status) ? "disabled" : ""}>
+              <option value="">Express: off${o.express ? "" : " ✓"}</option>
+              <option value="today" ${o.express && o.express.option === "today" ? "selected" : ""}>Express: today</option>
+              <option value="tomorrow" ${o.express && o.express.option === "tomorrow" ? "selected" : ""}>Express: tomorrow</option>
+            </select>
             <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
           </div></div>`).join("") || "<p class='muted'>No orders in this state.</p>";
         $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
           try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
           catch (e) { toast(e.message, "error"); }
+        }));
+        $$("#olist [data-ex]").forEach((sel) => (sel.onchange = async () => {
+          try {
+            await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.ex), { method: "PATCH", body: JSON.stringify({ express: sel.value || null }) });
+            toast(sel.value ? `Express delivery set — customer sees “arrives ${sel.value}”.` : "Express delivery removed.");
+            vOrders();
+          } catch (e) { toast(e.message, "error"); }
         }));
         $$("#olist [data-odel]").forEach((b) => (b.onclick = async () => {
           if (!confirm(`Permanently delete order ${b.dataset.odel}? This cannot be undone.`)) return;

@@ -326,23 +326,6 @@ app.get("/api/orders/:orderNo", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not load the order." }); }
 });
 
-// Customer express-delivery upgrade (free auto-upgrade, Today/Tomorrow).
-// Same exposure as tracking: order numbers are unguessable.
-app.post("/api/orders/:orderNo/express", async (req, res) => {
-  try {
-    const option = String((req.body && req.body.option) || "").toLowerCase();
-    if (!["today", "tomorrow"].includes(option)) return res.status(400).json({ error: "Choose Today or Tomorrow for express delivery." });
-    const orders = await getOrders();
-    const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
-    if (!o) return res.status(404).json({ error: "Order not found." });
-    if (["delivered", "cancelled"].includes(o.status)) return res.status(400).json({ error: "Express delivery is no longer available for this order." });
-    o.express = { option, at: new Date().toISOString() };
-    o.timeline.push({ stage: o.status, at: new Date().toISOString(), note: `Upgraded to express delivery — arriving ${option} (free upgrade).` });
-    await store.saveOrders(orders);
-    res.json(o);
-  } catch (e) { res.status(500).json({ error: "Could not upgrade this order." }); }
-});
-
 // Public pre-shipment cancel (order numbers are unguessable; same exposure as tracking).
 app.post("/api/orders/:orderNo/cancel", async (req, res) => {
   try {
@@ -730,10 +713,23 @@ app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
     const orders = await getOrders();
     const o = orders.find((x) => x.orderNo === req.params.orderNo);
     if (!o) return res.status(404).json({ error: "Order not found." });
-    const { status } = req.body;
-    if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
-    o.status = status;
-    o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
+    const { status, express } = req.body || {};
+    if (status === undefined && express === undefined) return res.status(400).json({ error: "Nothing to update." });
+    if (status !== undefined) {
+      if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
+      o.status = status;
+      o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
+    }
+    if (express !== undefined) {
+      if (express !== null && !["today", "tomorrow"].includes(express)) return res.status(400).json({ error: "Express option must be today, tomorrow or off." });
+      if (express) {
+        o.express = { option: express, at: new Date().toISOString(), by: "admin" };
+        o.timeline.push({ stage: o.status, at: new Date().toISOString(), note: `Marked for express delivery — arriving ${express}.` });
+      } else {
+        delete o.express;
+        o.timeline.push({ stage: o.status, at: new Date().toISOString(), note: "Express delivery removed." });
+      }
+    }
     await store.saveOrders(orders);
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not update the order." }); }
