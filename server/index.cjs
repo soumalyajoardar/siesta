@@ -184,6 +184,20 @@ app.get("/api/products/:id/reviews", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not load reviews." }); }
 });
 
+// Public recent verified reviews (safe fields only, newest first) + store-wide aggregate.
+app.get("/api/reviews/recent", async (req, res) => {
+  try {
+    const n = Math.min(Math.max(1, Number((req.query || {}).limit) || 3), 12);
+    const all = await getReviews();
+    const avg = all.length ? Math.round((all.reduce((s, r) => s + r.rating, 0) / all.length) * 10) / 10 : 0;
+    const reviews = [...all]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, n)
+      .map((r) => ({ id: r.id, rating: r.rating, title: r.title, text: String(r.text).slice(0, 220), author: r.author, createdAt: r.createdAt, verified: true, productId: r.productId, productName: r.productName }));
+    res.json({ count: all.length, avg, reviews });
+  } catch (e) { res.status(500).json({ error: "Could not load reviews." }); }
+});
+
 // Write a review — only for items in DELIVERED orders, one per order+product.
 app.post("/api/reviews", async (req, res) => {
   try {
@@ -268,7 +282,10 @@ app.post("/api/orders", async (req, res) => {
       couponCode = c.code;
     }
     const shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : settings.shipFlat;
-    const total = subtotal - discount + shipping;
+    // Round the payable total to the nearest ₹10 (standard round-off line).
+    const preRound = subtotal - discount + shipping;
+    const total = Math.round(preRound / 10) * 10;
+    const roundOff = total - preRound;
     if (total > settings.codMaxOrder) return res.status(400).json({ error: `COD is available up to ₹${settings.codMaxOrder.toLocaleString("en-IN")}.` });
 
     // Decrement stock.
@@ -289,7 +306,7 @@ app.post("/api/orders", async (req, res) => {
       orderNo, createdAt: now, items: lines,
       address: { name: a.name, phone: a.phone, line1: a.line1, land: a.land || "", city: a.city, state: a.state, pin: a.pin, country: "India" },
       payment: "Cash on Delivery", coupon: couponCode,
-      amounts: { subtotal, discount, shipping, total },
+      amounts: { subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total },
       status: "confirmed",
       timeline: [{ stage: "confirmed", at: now, note: "Order placed · Cash on Delivery" }],
     };
@@ -371,11 +388,16 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Login failed. Please try again." }); }
 });
 
-app.get("/api/auth/me", requireCustomer, (req, res) => res.json({ user: sanitizeCustomer(req.customer) }));
+app.get("/api/auth/me", requireCustomer, (req, res) => res.json({
+  user: sanitizeCustomer(req.customer),
+  addresses: req.customer.addresses || [],
+  cart: req.customer.cart || [],
+  wishlist: req.customer.wishlist || [],
+}));
 
 app.patch("/api/auth/me", requireCustomer, async (req, res) => {
   try {
-    const { name, phone, marketing } = req.body || {};
+    const { name, phone, marketing, cart, wishlist } = req.body || {};
     if (name !== undefined && String(name).trim().length < 3) return res.status(400).json({ error: "Enter your full name." });
     if (phone !== undefined && phone !== "" && !isPhone(phone)) return res.status(400).json({ error: "Enter a valid 10-digit mobile number." });
     const list = await store.getCustomers();
@@ -384,10 +406,27 @@ app.patch("/api/auth/me", requireCustomer, async (req, res) => {
     if (name !== undefined) u.name = String(name).trim();
     if (phone !== undefined) u.phone = phone ? String(phone).replace(/\D/g, "").slice(-10) : "";
     if (marketing !== undefined) u.marketing = !!marketing;
+    if (cart !== undefined) u.cart = sanitizeCart(cart);
+    if (wishlist !== undefined) u.wishlist = sanitizeWishlist(wishlist);
     await store.saveCustomers(list);
     res.json({ user: sanitizeCustomer(u) });
   } catch (e) { res.status(500).json({ error: "Could not update your profile." }); }
 });
+
+// Lightly validated shopping state (prices/stock are always re-checked at checkout).
+function sanitizeCart(cart) {
+  if (!Array.isArray(cart)) return [];
+  return cart.slice(0, 50).map((l) => ({
+    id: String((l && l.id) || "").slice(0, 80),
+    size: String((l && l.size) || "").slice(0, 6),
+    color: String((l && l.color) || "").slice(0, 40),
+    qty: Math.min(Math.max(1, Number((l && l.qty) || 1) || 1), 10),
+  })).filter((l) => l.id && l.size);
+}
+function sanitizeWishlist(w) {
+  if (!Array.isArray(w)) return [];
+  return [...new Set(w.map((x) => String(x).slice(0, 80)).filter(Boolean))].slice(0, 200);
+}
 
 app.post("/api/auth/password", requireCustomer, async (req, res) => {
   try {
@@ -704,6 +743,15 @@ app.get("/api/admin/customers", requireAdmin, async (req, res) => {
       marketing: !!u.marketing, addresses: (u.addresses || []).length, createdAt: u.createdAt,
     })));
   } catch (e) { res.status(500).json({ error: "Could not load customers." }); }
+});
+
+app.delete("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
+  try {
+    const orders = await getOrders();
+    if (!orders.some((x) => x.orderNo === req.params.orderNo)) return res.status(404).json({ error: "Order not found." });
+    await store.saveOrders(orders.filter((x) => x.orderNo !== req.params.orderNo));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not delete the order." }); }
 });
 
 /* ---------------- admin: settings + stats ---------------- */

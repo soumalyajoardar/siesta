@@ -6,6 +6,34 @@ import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openMo
 import { apiHealth, serverCreateOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
 import { cardHTML, bindCards } from "./shop.js";
 
+// Set right before a coupon apply/remove re-render so the changed rows flash.
+let flashCoupon = false;
+const signed = (n) => (n < 0 ? `− ${inr(-n)}` : n > 0 ? `+ ${inr(n)}` : inr(0));
+// Full MRP → sub-total breakdown shared by cart + checkout.
+function breakdownHTML(t, flash = false) {
+  const f = flash ? " flash" : "";
+  return `
+    <div class="summary-row"><span>MRP Total</span><span>${inr(t.mrpTotal)}</span></div>
+    <div class="summary-row${f}"><span>Less: MRP Discount</span><span style="color:var(--success)">− ${inr(t.savings)}</span></div>
+    <div class="summary-row"><span>Offer Price</span><span>${inr(t.subtotal)}</span></div>
+    ${t.coupon && t.discount ? `<div class="summary-row${f}"><span>Less: Coupon (${esc(t.coupon.code)})</span><span style="color:var(--success)">− ${inr(t.discount)}</span></div>` : ""}
+    <div class="summary-row"><span>Delivery Charge</span><span>${t.shipping ? inr(t.shipping) : "Free"}</span></div>
+    ${t.roundOff ? `<div class="summary-row"><span>Round Off</span><span>${signed(t.roundOff)}</span></div>` : ""}
+    <div class="summary-row total${f}"><span>Sub Total</span><span>${inr(t.total)}</span></div>`;
+}
+// Compact breakdown for saved orders (tolerates pre-round-off records).
+function orderAmountsHTML(a) {
+  a = a || {};
+  const subtotal = a.subtotal ?? 0, discount = a.discount ?? 0, shipping = a.shipping ?? 0;
+  const roundOff = a.roundOff ?? 0, total = a.total ?? 0;
+  const coupon = a.coupon || null;
+  return `
+    ${discount ? `<div class="summary-row"><span>Coupon${coupon ? ` (${esc(coupon)})` : ""}</span><span style="color:var(--success)">− ${inr(discount)}</span></div>` : ""}
+    <div class="summary-row"><span>Delivery Charge</span><span>${shipping ? inr(shipping) : "Free"}</span></div>
+    ${roundOff ? `<div class="summary-row"><span>Round Off</span><span>${signed(roundOff)}</span></div>` : ""}
+    <div class="summary-row total"><span>Sub Total</span><span>${inr(total)}</span></div>`;
+}
+
 export function CartPage() {
   setTitle("Your Cart — Siesta", "Review items, apply coupons and proceed to checkout.");
   const t = S.totals();
@@ -20,14 +48,22 @@ export function CartPage() {
     if (form) form.onsubmit = (e) => {
       e.preventDefault();
       const code = root.querySelector("#couponInput").value;
-      try { const c = S.applyCoupon(code); toast(`Coupon ${c.code} applied.`); rerender(); } catch (err) { toast(err.message, "error"); }
+      try {
+        const c = S.applyCoupon(code);
+        const after = S.totals();
+        toast(`Coupon ${c.code} applied — you save ${inr(after.discount)}. New sub total ${inr(after.total)}.`);
+        flashCoupon = true;
+        rerender();
+      } catch (err) { toast(err.message, "error"); }
     };
     const rmCoupon = root.querySelector("#rmCoupon");
-    if (rmCoupon) rmCoupon.onclick = () => { S.removeCoupon(); toast("Coupon removed."); rerender(); };
+    if (rmCoupon) rmCoupon.onclick = () => { S.removeCoupon(); toast("Coupon removed — sub total updated."); flashCoupon = true; rerender(); };
   });
   const rerender = () => { document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); };
 
   if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Your cart is empty</h2><p class="muted">Beautiful essentials are waiting. Start with our best sellers.</p><div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" href="#/shop">Continue Shopping</a><a class="btn btn-light" href="#/shop?filter=new">Shop New Arrivals</a></div></div></div>`;
+  const flash = flashCoupon;
+  flashCoupon = false;
 
   return `<div class="page">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><span aria-current="page">Cart</span></nav>
@@ -51,12 +87,8 @@ export function CartPage() {
         <h2 style="margin:0 0 .4rem">Order summary</h2>
         ${t.coupon ? `<div class="applied-coupon"><span>✓ ${esc(t.coupon.code)} — ${esc(t.coupon.code === "FLAT200" ? "₹200 off" : t.coupon.value + "% off")}</span><button class="link-btn" id="rmCoupon">Remove</button></div>`
         : `<form id="couponForm" class="coupon-row"><label class="visually-hidden" for="couponInput">Coupon code</label><input id="couponInput" class="input" placeholder="Coupon code" autocomplete="off"/><button class="btn btn-outline btn-sm" type="submit">Apply</button></form>`}
-        <div class="summary-row"><span>Subtotal</span><span>${inr(t.subtotal)}</span></div>
-        <div class="summary-row"><span>MRP savings</span><span style="color:var(--success)">− ${inr(t.savings)}</span></div>
-        ${t.discount ? `<div class="summary-row"><span>Coupon discount</span><span style="color:var(--success)">− ${inr(t.discount)}</span></div>` : ""}
-        <div class="summary-row"><span>Shipping</span><span>${t.shipping === 0 ? "Free" : inr(t.shipping)}</span></div>
+        ${breakdownHTML(t, flash)}
         ${t.shipping > 0 ? `<p class="muted" style="font-size:.82rem">Add ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} more for free shipping.</p>` : ""}
-        <div class="summary-row total"><span>Total</span><span>${inr(t.total)}</span></div>
         <a class="btn btn-dark btn-block" href="#/checkout" style="margin-top:.8rem">Proceed to Checkout</a>
         <p class="muted" style="font-size:.82rem;text-align:center">Cash on Delivery available · Secure checkout</p>
       </aside>
@@ -85,10 +117,7 @@ export function CheckoutPage() {
       <aside class="card" aria-label="Order summary" style="position:sticky;top:calc(var(--header-h) + 12px)">
         <h2 style="margin:0 0 .4rem">Summary</h2>
         ${t.lines.map((l) => `<div class="summary-row"><span>${esc(l.product.name)} × ${l.qty} <span class="muted">(${esc(l.size)})</span></span><span>${inr(l.product.price * l.qty)}</span></div>`).join("")}
-        <div class="summary-row"><span>Subtotal</span><span>${inr(t.subtotal)}</span></div>
-        ${t.discount ? `<div class="summary-row"><span>Coupon (${esc(t.coupon.code)})</span><span>− ${inr(t.discount)}</span></div>` : ""}
-        <div class="summary-row"><span>Shipping</span><span>${t.shipping ? inr(t.shipping) : "Free"}</span></div>
-        <div class="summary-row total"><span>Total</span><span>${inr(t.total)}</span></div>
+        ${breakdownHTML(t)}
         <p class="muted" style="font-size:.82rem">Pay ${inr(t.total)} in cash/UPI on delivery.</p>
       </aside>
     </div>
@@ -235,7 +264,7 @@ function wireCheckout(t) {
             items: t.lines.map((l) => ({ id: l.id, name: l.product.name, price: l.product.price, qty: l.qty, size: l.size, color: l.color })),
             address: coState.address,
             payment: "Cash on Delivery",
-            amounts: { subtotal: t.subtotal, discount: t.discount, shipping: t.shipping, total: t.total },
+            amounts: { subtotal: t.subtotal, mrpTotal: t.mrpTotal, savings: t.savings, discount: t.discount, shipping: t.shipping, roundOff: t.roundOff, total: t.total },
           });
           S.clearCart(); S.removeCoupon(); resetCheckout();
           document.dispatchEvent(new CustomEvent("siesta:counts"));
@@ -270,6 +299,7 @@ function successHTML(o) {
     <div class="summary-row"><span>Order date</span><span>${new Date(o.createdAt).toLocaleString("en-IN")}</span></div>
     <div class="summary-row"><span>Payment</span><span>Cash on Delivery</span></div>
     <div class="summary-row"><span>Deliver to</span><span style="text-align:right">${esc(o.address.line1)}, ${esc(o.address.city)} ${esc(o.address.pin)}</span></div>
+    ${orderAmountsHTML(o.amounts)}
     <div class="summary-row total"><span>Total due on delivery</span><span>${inr(o.amounts.total)}</span></div>
     <div style="display:flex;gap:.6rem;margin-top:1.2rem;flex-wrap:wrap;justify-content:center">
       <a class="btn btn-dark" href="#/track/${esc(o.orderNo)}">Track Order</a>
@@ -335,7 +365,7 @@ function trackHTML(o) {
   };
   const aside = `<aside class="card track-aside"><h2 style="margin-top:0">Delivery details</h2>
     <p class="t-addr"><span aria-hidden="true">⌂</span><span>${esc(o.address.name)}<br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
-    <h3>Items (${itemCount})</h3>${o.items.map((i) => `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${esc(i.name)} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`).join("")}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
+    <h3>Items (${itemCount})</h3>${o.items.map((i) => `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${esc(i.name)} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
 
   if (o.status === "cancelled") {
     const conf = o.timeline.find((t) => t.stage === "confirmed");

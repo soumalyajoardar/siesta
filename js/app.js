@@ -20,6 +20,7 @@ function parseHash() {
 
 async function render() {
   barStart();
+  document.getElementById("pdp-jsonld")?.remove(); // product schema belongs to PDP only
   const { segs, query } = parseHash();
   closeMobileNav();
   // Maintenance mode: the whole storefront becomes one page. The cached flag

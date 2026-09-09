@@ -44,11 +44,33 @@
   {
     "@context": "https://schema.org",
     "@type": "ClothingStore",
+    "@id": "./#store",
     "name": "Siesta",
     "description": "Premium modern essentials and streetwear.",
     "currenciesAccepted": "INR",
     "paymentAccepted": "Cash on Delivery",
-    "areaServed": "IN"
+    "areaServed": "IN",
+    "parentOrganization": { "@id": "./#organization" }
+  }
+  </script>
+  <!-- NOTE: add "sameAs": ["https://instagram.com/<real-handle>", ...] to the
+       Organization block below ONLY once real brand profiles exist. Never
+       invent social accounts. Likewise, replace the contactPoint placeholder
+       with the real support email/phone from js/config.js when published. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": "./#organization",
+    "name": "Siesta",
+    "description": "Siesta is a premium fashion store for modern essentials — T-shirts, shirts, jackets, hoodies, jeans, trousers, shorts and sweatshirts, with Cash on Delivery across India.",
+    "areaServed": "IN",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer service",
+      "areaServed": "IN",
+      "availableLanguage": ["en", "hi"]
+    }
   }
   </script>
   <script type="application/ld+json">
@@ -152,6 +174,29 @@
   </nav>
 
   <main id="main" tabindex="-1">
+    <noscript>
+      <div style="max-width:720px;margin:2rem auto;padding:0 1.25rem;font-family:system-ui,sans-serif">
+        <h1>Siesta — Modern Essentials &amp; Streetwear</h1>
+        <p>Siesta is a premium fashion store for modern essentials: T-shirts, shirts, jackets, hoodies, jeans, trousers, shorts and sweatshirts for men, women and unisex fits — with Cash on Delivery across India, easy 7-day returns and free shipping over ₹1,499.</p>
+        <h2>Shop by category</h2>
+        <ul>
+          <li><a href="#/shop?gender=men">Men's fashion</a></li>
+          <li><a href="#/shop?gender=women">Women's fashion</a></li>
+          <li><a href="#/shop?gender=unisex">Unisex clothing</a></li>
+          <li><a href="#/shop?category=tshirts">T-Shirts</a></li>
+          <li><a href="#/shop?category=shirts">Shirts</a></li>
+          <li><a href="#/shop?category=jackets">Jackets</a></li>
+          <li><a href="#/shop?category=hoodies">Hoodies</a></li>
+          <li><a href="#/shop?category=jeans">Jeans</a></li>
+          <li><a href="#/shop?category=pants">Pants &amp; Trousers</a></li>
+          <li><a href="#/shop?category=shorts">Shorts</a></li>
+          <li><a href="#/shop?category=sweatshirts">Sweatshirts</a></li>
+          <li><a href="#/shop?filter=new">New Arrivals</a></li>
+          <li><a href="#/shop?filter=sale">Sale</a></li>
+        </ul>
+        <p>Please enable JavaScript for the full Siesta shopping experience — search, filters, cart, checkout and order tracking.</p>
+      </div>
+    </noscript>
     <div id="app" aria-live="off"></div>
   </main>
 

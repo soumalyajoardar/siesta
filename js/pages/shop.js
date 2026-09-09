@@ -189,7 +189,49 @@ function initHero(root, count) {
   play();
 }
 
-// ---------------- HOME ----------------
+// Live Product schema for the viewed item (real price, stock + review data).
+function setProductJsonLd(p, rating) {
+  try {
+    let tag = document.getElementById("pdp-jsonld");
+    if (!tag) {
+      tag = document.createElement("script");
+      tag.id = "pdp-jsonld";
+      tag.type = "application/ld+json";
+      document.head.appendChild(tag);
+    }
+    const ld = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: p.name,
+      category: p.category,
+      sku: p.sku,
+      offers: {
+        "@type": "Offer",
+        priceCurrency: "INR",
+        price: p.price,
+        availability: (p.stock ?? 0) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      },
+    };
+    if (rating && rating.count > 0) {
+      ld.aggregateRating = { "@type": "AggregateRating", ratingValue: rating.avg, reviewCount: rating.count };
+    }
+    tag.textContent = JSON.stringify(ld);
+  } catch { /* SEO enhancement only */ }
+}
+
+// Homepage verified-reviews showcase (real data only — hides when empty).
+function fillHomeReviews(root) {
+  const box = root.querySelector("#homeReviews");
+  if (!box) return;
+  fetch("/api/reviews/recent?limit=3").then((r) => r.json()).then((d) => {
+    if (!box.isConnected) return;
+    if (!d || !d.count) { box.closest("section").hidden = true; return; }
+    box.innerHTML = `<div class="rev-grid">
+      <div class="stat"><span class="muted">Average rating</span><strong>${stars(d.avg)} ${d.avg}</strong><a class="link-btn" href="#/shop?filter=bestsellers">${d.count} verified reviews →</a></div>
+      ${d.reviews.map((r) => `<div class="stat"><span class="muted">${esc(r.productName || "Verified purchase")}</span><strong style="font-size:1rem">${stars(r.rating)} ${esc(r.title || "")}</strong><p class="muted" style="font-size:.84rem;margin:.3rem 0">“${esc(r.text.slice(0, 90))}${r.text.length > 90 ? "…" : ""}”</p><span class="verified">Verified Purchase</span></div>`).join("")}
+    </div>`;
+  }).catch(() => { if (box.isConnected) box.closest("section").hidden = true; });
+}
 export function HomePage() {
   setTitle("Siesta — Modern Essentials & Streetwear", "Premium everyday fashion: tees, shirts, jackets, hoodies, denim and more.");
   const ALL = catalog();
@@ -250,7 +292,7 @@ export function HomePage() {
       </div>` : ""}
     </section>`;
 
-  setTimeout(() => { const root = document.getElementById("app"); bindCards(root); observeReveals(root); initHero(root, slides.length); });
+  setTimeout(() => { const root = document.getElementById("app"); bindCards(root); observeReveals(root); initHero(root, slides.length); fillHomeReviews(root); });
   // Preload the LCP hero photo + first-row covers so first paint already has them.
   setTimeout(() => {
     try {
@@ -315,6 +357,11 @@ export function HomePage() {
     <section class="section" aria-labelledby="bestH">
       <div class="section-head"><div><span class="eyebrow">Customer favourites</span><h2 id="bestH">Best sellers</h2><p>Core styles our customers reorder — merchandised by our studio, not by paid placement.</p></div><a class="link-btn" href="#/shop?filter=bestsellers">Shop all →</a></div>
       <div class="product-grid" data-grid>${best.map(cardHTML).join("")}</div>
+    </section>
+
+    <section class="section" aria-labelledby="revH">
+      <div class="section-head"><div><span class="eyebrow">Verified reviews</span><h2 id="revH">Loved by customers</h2><p>Real reviews from verified delivered purchases — never paid, never faked.</p></div></div>
+      <div id="homeReviews"><div class="stat-grid"><div class="stat"><div class="skel" style="height:90px"></div></div><div class="stat"><div class="skel" style="height:90px"></div></div><div class="stat"><div class="skel" style="height:90px"></div></div></div></div>
     </section>
 
     <section class="brand-statement reveal" aria-label="About Siesta">
@@ -523,9 +570,11 @@ export function ProductPage(id) {
       if (!box) return;
       if (!Array.isArray(list) || !list.length) {
         box.innerHTML = "<p>No verified-purchase reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
+        setProductJsonLd(p, null);
         return;
       }
       const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
+      setProductJsonLd(p, { avg, count: list.length });
       box.innerHTML = `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
         list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
     }).catch(() => {

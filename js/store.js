@@ -168,30 +168,49 @@ export async function changePassword(email, currentPw, nextPw) {
   u.salt = salt; u.hash = await hashPassword(nextPw, salt);
   write(K.users, users); emit();
 }
-// Server address book sync (local list is the offline cache; server wins when non-empty).
+// Server shopping-state sync (cart + wishlist + addresses follow the account;
+// local lists are the offline cache). Pushed debounced, pulled on login.
+let pushT = null;
+function pushState() {
+  const t = getToken();
+  if (!t) return;
+  clearTimeout(pushT);
+  pushT = setTimeout(() => {
+    try {
+      const H = { "Content-Type": "application/json", Authorization: "Bearer " + getToken() };
+      fetch("/api/auth/addresses", { method: "PUT", headers: H, body: JSON.stringify({ addresses: getAddrs() }) }).catch(() => {});
+      fetch("/api/auth/me", { method: "PATCH", headers: H, body: JSON.stringify({ cart: getCart(), wishlist: getWish() }) }).catch(() => {});
+    } catch { /* offline: local copies retained */ }
+  }, 800);
+}
+function pushAddresses() { pushState(); }
 async function pullAddresses() {
+  await pullState();
+}
+async function pullState() {
   try {
     const r = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + getToken() } });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !Array.isArray(data.addresses)) return;
-    if (data.addresses.length) write(K.addrs, data.addresses);
-    else if (getAddrs().length) pushAddresses();
+    if (!r.ok || !data.user) return;
+    if (Array.isArray(data.addresses) && data.addresses.length) write(K.addrs, data.addresses);
+    const merged = [...getCart()];
+    for (const l of Array.isArray(data.cart) ? data.cart : []) {
+      const p = l && productById(l.id);
+      if (!p || !p.sizes.includes(l.size)) continue;
+      const ex = merged.find((x) => x.id === l.id && x.size === l.size && x.color === l.color);
+      if (ex) ex.qty = Math.min(10, ex.qty + Math.min(10, Number(l.qty) || 1));
+      else if (merged.length < 50) merged.push({ id: l.id, size: l.size, color: l.color || p.colors[0].name, qty: Math.min(10, Number(l.qty) || 1) });
+    }
+    write(K.cart, merged);
+    write(K.wish, [...new Set([...getWish(), ...((Array.isArray(data.wishlist) ? data.wishlist : []).filter((id) => productById(id)))])]);
+    if (!getAddrs().length) pushState();
+    emit();
   } catch { /* offline: keep local */ }
-}
-function pushAddresses() {
-  try {
-    const t = getToken();
-    if (!t) return;
-    fetch("/api/auth/addresses", {
-      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
-      body: JSON.stringify({ addresses: getAddrs() }),
-    }).catch(() => {});
-  } catch { /* offline: local copy retained */ }
 }
 
 // ---------- Cart ----------
 export const getCart = () => read(K.cart, []); // [{id,size,color,qty}]
-export function setCart(c) { write(K.cart, c); emit(); }
+export function setCart(c) { write(K.cart, c); emit(); pushState(); }
 export function addToCart(id, size, color, qty = 1) {
   const p = productById(id);
   if (!p) throw new Error("Product not found.");
@@ -228,8 +247,11 @@ export function totals() {
     discount = Math.min(discount, subtotal);
   }
   const shipping = lines.length === 0 || subtotal - discount >= STORE.freeShipThreshold ? 0 : STORE.shipFlat;
-  const total = Math.max(0, subtotal - discount + shipping);
-  return { lines, subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, total, coupon };
+  // Round the payable total to the nearest ₹10 (matches the server exactly).
+  const preRound = Math.max(0, subtotal - discount + shipping);
+  const total = lines.length === 0 ? 0 : Math.round(preRound / 10) * 10;
+  const roundOff = total - preRound;
+  return { lines, subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total, coupon };
 }
 const isExpired = (c) => new Date(c.expires + "T23:59:59") < new Date();
 export const getCoupon = () => read(K.coupon, null);
@@ -250,10 +272,10 @@ export const getWish = () => read(K.wish, []);
 export function toggleWish(id) {
   let w = getWish();
   w = w.includes(id) ? w.filter((x) => x !== id) : [...w, id];
-  write(K.wish, w); emit();
+  write(K.wish, w); emit(); pushState();
   return w.includes(id);
 }
-export const clearWish = () => { write(K.wish, []); emit(); };
+export const clearWish = () => { write(K.wish, []); emit(); pushState(); };
 
 // ---------- Addresses ----------
 export const getAddrs = () => read(K.addrs, []);

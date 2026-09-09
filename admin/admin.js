@@ -630,10 +630,16 @@
             <div><strong>${esc(o.orderNo)}</strong><br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
             <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
             <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
-            <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></div>
+            <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+            <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
           </div></div>`).join("") || "<p class='muted'>No orders in this state.</p>";
         $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
           try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
+          catch (e) { toast(e.message, "error"); }
+        }));
+        $$("#olist [data-odel]").forEach((b) => (b.onclick = async () => {
+          if (!confirm(`Permanently delete order ${b.dataset.odel}? This cannot be undone.`)) return;
+          try { await api("/api/admin/orders/" + encodeURIComponent(b.dataset.odel), { method: "DELETE" }); toast("Order deleted."); vOrders(); }
           catch (e) { toast(e.message, "error"); }
         }));
       };
