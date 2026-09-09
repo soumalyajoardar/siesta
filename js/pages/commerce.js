@@ -344,7 +344,7 @@ const STAGE_NOTES_FALLBACK = {
   processing: "Your items are being picked and quality-checked at our facility.",
   packed: "Packed, sealed and labelled — ready for courier handoff.",
   shipped: "Handed to our delivery partner and on its way to you.",
-  out_for_delivery: "Out for delivery and arriving today — please keep the COD amount ready.",
+  out_for_delivery: "Out for delivery and arriving today — our courier attempts delivery between 10:00 AM and 10:00 PM. Please keep the COD amount ready.",
   delivered: "Delivered. We hope you love it — tap below to review your items.",
   cancelled: "Cancelled before shipment — nothing was charged (Cash on Delivery).",
 };
@@ -391,6 +391,7 @@ function trackHTML(o) {
         <span class="status-pill${o.status === "delivered" ? " is-done" : ""}"><span class="pulse-dot" aria-hidden="true"></span>${esc(labels[o.status] || o.status)}</span>
         <h1 class="h-display" style="font-size:1.8rem;margin:.5rem 0 .3rem">${esc(etaText)}</h1>
         <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
+        ${o.express ? `<p style="margin:.4rem 0"><span class="pill ok">⚡ Express delivery · arrives ${esc(o.express.option)}</span></p>` : ""}
       </div>
       <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">⧉</span></button>
     </div>

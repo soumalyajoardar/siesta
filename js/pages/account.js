@@ -1,8 +1,8 @@
 // Auth, Account, Orders history, Static + Legal pages.
 import { BUSINESS } from "../config.js";
 import * as S from "../store.js";
-import { esc, inr, setTitle, toast, confirmDialog, isEmail } from "../ui.js";
-import { serverCancelOrder } from "../api.js";
+import { esc, inr, setTitle, toast, confirmDialog, isEmail, openModal } from "../ui.js";
+import { serverCancelOrder, serverExpressUpgrade } from "../api.js";
 import { openReviewModal } from "./commerce.js";
 
 const needAuth = async () => {
@@ -99,6 +99,47 @@ export function ForgotPage() {
   return `<div class="page"><div class="auth-wrap"><h1 class="h-display" style="font-size:2rem">Reset password</h1><div class="auth-card"><form id="fgForm"><div class="field"><label for="fgEmail">Email address *</label><input id="fgEmail" name="email" class="input" type="email" autocomplete="email"/><span class="err"></span></div><button class="btn btn-dark btn-block" style="margin-top:.8rem" type="submit">Send Reset Link</button></form></div></div></div>`;
 }
 
+// ---------------- EXPRESS DELIVERY UPGRADE (free auto-upgrade) ----------------
+export function openExpressModal(orderNo, onDone) {
+  const { el, close } = openModal("Express Delivery", `
+    <p class="muted" style="margin-top:0">Upgrade this order to express delivery — free, instant, and prioritised in packing.</p>
+    <div class="field"><label for="exDay">Arriving</label>
+      <select id="exDay" class="select">
+        <option value="today">Today</option>
+        <option value="tomorrow">Tomorrow</option>
+      </select>
+    </div>
+    <p class="err" id="exErr" role="alert"></p>
+    <button class="btn btn-dark btn-block" id="exGo">Confirm Express Upgrade</button>`);
+  el.querySelector("#exGo").onclick = async (e) => {
+    const day = el.querySelector("#exDay").value;
+    const btn = e.currentTarget;
+    btn.classList.add("is-loading"); btn.disabled = true;
+    try {
+      const updated = await serverExpressUpgrade(orderNo, day);
+      try {
+        const all = JSON.parse(localStorage.getItem("siesta.orders.v1") || "[]");
+        const i = all.findIndex((x) => x.orderNo === orderNo);
+        if (i >= 0) { all[i] = { ...all[i], express: updated.express, timeline: updated.timeline }; }
+        else all.unshift({ ...updated, _remote: true });
+        localStorage.setItem("siesta.orders.v1", JSON.stringify(all));
+      } catch {}
+      const { el: doneEl, close: doneClose } = openModal("Upgraded to Express", `
+        <div style="text-align:center">
+          <div class="success-check" aria-hidden="true" style="width:56px;height:56px;font-size:1.5rem">✓</div>
+          <h3 style="margin:.4rem 0">Congratulations, your order has been auto upgraded to express delivery.</h3>
+          <p class="muted">It will arrive ${day === "today" ? "today" : "tomorrow"}. Keep the COD amount ready.</p>
+          <button class="btn btn-dark" id="exDone">Done</button>
+        </div>`);
+      doneEl.querySelector("#exDone").onclick = () => { doneClose(); close(); if (onDone) onDone(); };
+      toast(`Express delivery confirmed — arriving ${day}.`);
+    } catch (err) {
+      el.querySelector("#exErr").textContent = err.message || "Could not upgrade this order.";
+      btn.classList.remove("is-loading"); btn.disabled = false;
+    }
+  };
+}
+
 // ---------- ACCOUNT ----------
 const NAV = [["overview", "Overview"], ["orders", "Orders"], ["addresses", "Addresses"], ["profile", "Profile"], ["security", "Security"], ["prefs", "Preferences"]];
 export function AccountPage(tab = "overview") {
@@ -127,8 +168,8 @@ function wireAccount(tab, u) {
       <div class="stat"><span class="muted">Addresses</span><strong>${S.getAddrs().length}</strong><a class="link-btn" href="#/account/addresses">Manage →</a></div></div>
       <div class="card" style="margin-top:1rem"><h3 style="margin-top:0">Latest order</h3>${orders[0] ? `<div class="summary-row"><span><strong>${esc(orders[0].orderNo)}</strong> · ${esc(orders[0].status.replace(/_/g, " "))}</span><a class="link-btn" href="#/track/${esc(orders[0].orderNo)}">Track →</a></div>` : `<p class="muted">No orders yet. <a href="#/shop">Start shopping</a>.</p>`}</div>`;
   } else if (tab === "orders") {
-    main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => `<div class="order-card"><div class="order-top"><div><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span></div><span class="pill ${o.status === "delivered" ? "ok" : o.status === "cancelled" ? "" : "warn"}">${esc(o.status.replace(/_/g, " "))}</span></div>
-      <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="#/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}</div>
+    main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => `<div class="order-card"><div class="order-top"><div><strong>${esc(o.orderNo)}</strong>${o.express ? ` <span class="pill ok">⚡ Express · arrives ${esc(o.express.option)}</span>` : ""}<br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span></div><span class="pill ${o.status === "delivered" ? "ok" : o.status === "cancelled" ? "" : "warn"}">${esc(o.status.replace(/_/g, " "))}</span></div>
+      <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="#/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}${!["delivered", "cancelled"].includes(o.status) ? `<button class="link-btn" data-express="${esc(o.orderNo)}">${o.express ? "Change express day" : "Express Delivery"}</button>` : ""}</div>
       <div data-dwrap="${esc(o.orderNo)}" hidden style="margin-top:.6rem">${o.items.map((i, k) => `<div class="summary-row"><span>${esc(i.name)} × ${i.qty} (${esc(i.size)})</span><span>${o.status === "delivered" ? `<button class="link-btn" data-rev="${esc(o.orderNo)}::${k}">Review</button> ` : ""}${inr(i.price * i.qty)}</span></div>`).join("")}</div></div>`).join("") : `<div class="empty"><h2>No orders yet</h2><p class="muted">Orders placed on this device will appear here.</p><a class="btn btn-dark" href="#/shop">Start Shopping</a></div>`}</div>`;
     main.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => { const w = main.querySelector(`[data-dwrap="${b.dataset.detail}"]`); w.hidden = !w.hidden; }));
     main.querySelectorAll("[data-rev]").forEach((b) => (b.onclick = () => {
@@ -143,6 +184,7 @@ function wireAccount(tab, u) {
       toast("Order cancelled.");
       wireAccount(tab, await S.currentUser());
     }));
+    main.querySelectorAll("[data-express]").forEach((b) => (b.onclick = () => openExpressModal(b.dataset.express, async () => wireAccount(tab, await S.currentUser()))));
   } else if (tab === "addresses") {
     const list = S.getAddrs();
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Saved addresses</h3><div class="addr-grid">${list.map((a) => `<div class="addr-card ${a.isDefault ? "default" : ""}"><strong>${esc(a.name)}</strong> ${a.isDefault ? '<span class="pill">Default</span>' : ""}<br/><span class="muted">${esc(a.line1)}, ${esc(a.city)} ${esc(a.pin)}<br/>${esc(a.phone)}</span><div style="display:flex;gap:.6rem;margin-top:.5rem"><button class="link-btn" data-del="${a.id}">Delete</button></div></div>`).join("") || '<p class="muted">No saved addresses yet.</p>'}</div>

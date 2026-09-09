@@ -170,6 +170,27 @@ export async function authAddresses(list) {
   return data;
 }
 
+export async function serverExpressUpgrade(orderNo, option) {
+  let r;
+  try {
+    r = await fetch("/api/orders/" + encodeURIComponent(orderNo) + "/express", {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ option }),
+    });
+  } catch (e) {
+    const err = new Error("Network unavailable.");
+    err.network = true;
+    throw err;
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(data.error || "Could not upgrade this order.");
+    err.status = r.status;
+    throw err;
+  }
+  return data;
+}
+
 export async function serverCancelOrder(orderNo) {
   const r = await fetch("/api/orders/" + encodeURIComponent(orderNo) + "/cancel", { method: "POST" });
   if (r.status === 404) return null; // pure-local order or unknown — caller handles locally

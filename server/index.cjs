@@ -73,7 +73,7 @@ const STAGE_NOTES = {
   processing: "Your items are being picked and quality-checked at our facility.",
   packed: "Packed, sealed and labelled — ready for courier handoff.",
   shipped: "Handed to our delivery partner and on its way to you.",
-  out_for_delivery: "Out for delivery and arriving today — please keep the COD amount ready.",
+  out_for_delivery: "Out for delivery and arriving today — our courier attempts delivery between 10:00 AM and 10:00 PM. Please keep the COD amount ready.",
   delivered: "Delivered. We hope you love it — tap below to review your items.",
   cancelled: "Cancelled before shipment — nothing was charged (Cash on Delivery).",
 };
@@ -324,6 +324,23 @@ app.get("/api/orders/:orderNo", async (req, res) => {
     if (!o) return res.status(404).json({ error: "Order not found." });
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not load the order." }); }
+});
+
+// Customer express-delivery upgrade (free auto-upgrade, Today/Tomorrow).
+// Same exposure as tracking: order numbers are unguessable.
+app.post("/api/orders/:orderNo/express", async (req, res) => {
+  try {
+    const option = String((req.body && req.body.option) || "").toLowerCase();
+    if (!["today", "tomorrow"].includes(option)) return res.status(400).json({ error: "Choose Today or Tomorrow for express delivery." });
+    const orders = await getOrders();
+    const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
+    if (!o) return res.status(404).json({ error: "Order not found." });
+    if (["delivered", "cancelled"].includes(o.status)) return res.status(400).json({ error: "Express delivery is no longer available for this order." });
+    o.express = { option, at: new Date().toISOString() };
+    o.timeline.push({ stage: o.status, at: new Date().toISOString(), note: `Upgraded to express delivery — arriving ${option} (free upgrade).` });
+    await store.saveOrders(orders);
+    res.json(o);
+  } catch (e) { res.status(500).json({ error: "Could not upgrade this order." }); }
 });
 
 // Public pre-shipment cancel (order numbers are unguessable; same exposure as tracking).

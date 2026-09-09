@@ -400,8 +400,8 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
 .site-footer .logo{color:#FBFAF8}
 .footer-inner{max-width:var(--max);margin:0 auto;padding:3rem 2rem 1.6rem}
 .footer-news{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;align-items:center;background:var(--sand);border:1px solid var(--line);border-radius:14px;padding:1.4rem 1.5rem;margin-bottom:1.8rem}
-.footer-news h2{font-family:var(--font-display);font-weight:500;margin:0 0 .3rem}
-.footer-news p{margin:0;color:var(--muted);font-size:.92rem}
+.footer-news h2{font-family:var(--font-display);font-weight:500;margin:0 0 .3rem;color:var(--ink)}
+.footer-news p{margin:0;color:var(--ink-2);font-size:.92rem}
 .news-form{display:flex;gap:.6rem;flex-wrap:wrap}
 .news-form input{flex:1;min-width:220px;border:1px solid var(--line-2);border-radius:999px;padding:.75rem 1.1rem}
 .form-note{flex-basis:100%;font-size:.86rem;margin:.2rem 0 0}
