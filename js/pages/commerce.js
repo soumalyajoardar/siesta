@@ -415,7 +415,7 @@ function trackHTML(o) {
         <span class="status-pill${o.status === "delivered" ? " is-done" : ""}"><span class="pulse-dot" aria-hidden="true"></span>${esc(labels[o.status] || o.status)}</span>
         <h1 class="h-display" style="font-size:1.8rem;margin:.5rem 0 .3rem">${esc(etaText)}</h1>
         <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
-        ${isExpress ? `<div class="express-note"><h3><span aria-hidden="true">⚡</span> Express delivery</h3><p>Your order has been automatically upgraded to express delivery. Enjoy your products at the earliest with our express service.</p></div>` : ""}
+        ${isExpress ? `<div class="express-note"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg> Express delivery</h3><p>Your order has been automatically upgraded to express delivery. Enjoy your products at the earliest with our express service.</p></div>` : ""}
       </div>
       <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">⧉</span></button>
     </div>
