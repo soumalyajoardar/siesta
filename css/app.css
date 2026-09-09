@@ -298,9 +298,13 @@ li.active .tick{border-color:var(--forest)}
 .success-check{width:72px;height:72px;margin:0 auto 1rem;border-radius:50%;background:var(--forest);color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;animation:pop .35s var(--ease)}
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 
-/* Timeline */
+/* Timeline: connectors drawn per step so the line always starts/ends exactly
+   at a dot — never overshooting, regardless of step content height. */
 .timeline{list-style:none;margin:0;padding:0;position:relative}
-.timeline::before{content:"";position:absolute;left:11px;top:8px;bottom:8px;width:2px;background:var(--line-2)}
+.timeline li:not(:last-child)::before{content:"";position:absolute;left:11px;top:12px;bottom:0;width:2px;border-radius:2px;background:var(--line-2)}
+.timeline li:last-child::before{content:"";position:absolute;left:11px;top:0;height:12px;width:2px;border-radius:2px;background:var(--line-2)}
+.timeline li.done::before,.timeline li.current::before{background:linear-gradient(180deg,var(--forest),#4C7A6C);animation:segIn .5s var(--ease) both}
+@keyframes segIn{from{opacity:0}to{opacity:1}}
 .timeline li{position:relative;z-index:1;padding:0 0 1.2rem 2.2rem}
 .timeline li:last-child{padding-bottom:0}
 .timeline .dot{position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:999px;background:#fff;border:2px solid var(--line-2)}
@@ -308,17 +312,12 @@ li.active .tick{border-color:var(--forest)}
 .timeline li.current .dot{border-color:var(--forest);box-shadow:0 0 0 4px rgba(26,60,52,.15)}
 .timeline strong{display:block}
 .timeline time,.timeline .t-sub{font-size:.84rem;color:var(--muted)}
-/* Animated progress fill + pulsing current step */
-.timeline{--fill:0%}
-.timeline::after{content:"";position:absolute;z-index:0;left:11px;top:8px;width:2px;height:var(--fill);max-height:calc(100% - 16px);background:linear-gradient(180deg,var(--forest),#4C7A6C);border-radius:2px;animation:tlFill 1s var(--ease) both}
-@keyframes tlFill{from{height:0}to{height:var(--fill)}}
+/* Pulsing current step */
 .timeline li.current .dot{animation:dotPulse 1.8s ease-in-out infinite}
 @keyframes dotPulse{0%,100%{box-shadow:0 0 0 4px rgba(26,60,52,.15)}50%{box-shadow:0 0 0 8px rgba(26,60,52,.06)}}
 .timeline li.cancelled .dot{background:#fff;border-color:var(--ink)}
 .timeline li.done .dot::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.62rem;font-weight:800}
 .timeline li.cancelled .dot::after{content:"✕";color:var(--ink)}
-.timeline.mini{--fill:100%}
-.timeline.mini::after{display:none}
 .tl-progress{height:8px;border-radius:99px;background:var(--sand-2);overflow:hidden;margin:.4rem 0 1.2rem}
 .tl-progress span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--forest),#4C7A6C);animation:barGrow 1s var(--ease) both}
 @keyframes barGrow{from{width:0!important}}

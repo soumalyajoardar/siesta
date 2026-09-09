@@ -566,26 +566,31 @@ export function ProductPage(id) {
     fetch(`/api/products/${encodeURIComponent(p.id)}/reviews`).then(async (r) => r.json()).then(async (list) => {
       const box = root.querySelector("#pdpRevBody");
       if (!box) return;
-      if (!Array.isArray(list) || !list.length) {
-        box.innerHTML = "<p>No verified-purchase reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
-        setProductJsonLd(p, null);
-        return;
-      }
-      const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
-      setProductJsonLd(p, { avg, count: list.length });
-      box.innerHTML = `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
-        list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
-      // Bought this in a delivered order? Offer a review right here.
+      // Eligibility is independent of existing reviews — check it first.
+      let eligBtn = "";
+      let eligOrder = "";
       try {
         const t = localStorage.getItem("siesta.token") || sessionStorage.getItem("siesta.token");
-        if (t && box.isConnected) {
-          const elig = await fetch(`/api/reviews/eligibility/${encodeURIComponent(p.id)}`, { headers: { Authorization: "Bearer " + t } }).then((x) => x.json()).catch(() => null);
-          if (elig && elig.eligible && box.isConnected) {
-            box.insertAdjacentHTML("afterbegin", `<div style="margin-bottom:.9rem"><button class="btn btn-dark btn-sm" id="pdpReviewBtn">Write a Review</button> <span class="muted" style="font-size:.84rem">Verified delivery on your account</span></div>`);
-            box.querySelector("#pdpReviewBtn").onclick = () => openReviewModal(elig.orderNo, { id: p.id, name: p.name });
+        if (t) {
+          const e = await fetch(`/api/reviews/eligibility/${encodeURIComponent(p.id)}`, { headers: { Authorization: "Bearer " + t } }).then((x) => x.json()).catch(() => null);
+          if (e && e.eligible && e.orderNo) {
+            eligOrder = e.orderNo;
+            eligBtn = `<div style="margin-bottom:.9rem"><button class="btn btn-dark btn-sm" id="pdpReviewBtn">Write a Review</button> <span class="muted" style="font-size:.84rem">Verified delivery on your account</span></div>`;
           }
         }
       } catch { /* logged out or offline: no button */ }
+      if (!box.isConnected) return;
+      if (!Array.isArray(list) || !list.length) {
+        box.innerHTML = eligBtn + "<p>No verified-purchase reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
+        setProductJsonLd(p, null);
+      } else {
+        const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
+        setProductJsonLd(p, { avg, count: list.length });
+        box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
+          list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
+      }
+      const btn = box.querySelector("#pdpReviewBtn");
+      if (btn) btn.onclick = () => openReviewModal(eligOrder, { id: p.id, name: p.name });
     }).catch(() => {
       const box = root.querySelector("#pdpRevBody");
       if (box) box.innerHTML = "<p class='muted'>Reviews are unavailable right now.</p>";
