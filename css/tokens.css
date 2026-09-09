@@ -40,6 +40,12 @@ body{
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
 }
 ::selection{background:var(--forest);color:#fff}
+/* Quiet branded scrollbar (forest-on-sand), thin everywhere */
+html{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px;border:2px solid var(--paper)}
+::-webkit-scrollbar-thumb:hover{background:var(--forest)}
 a{color:inherit}
 img,svg{display:block;max-width:100%}
 button{font:inherit}
