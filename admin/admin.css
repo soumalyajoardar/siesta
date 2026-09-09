@@ -12,7 +12,7 @@ body{background:#F4F2ED}
 .btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:.65rem 1.2rem;font-weight:600;cursor:pointer;border:1px solid transparent;font-size:.9rem;text-decoration:none}
 .btn-dark{background:var(--ink);color:#fff}.btn-dark:hover{background:var(--ink-2)}
 .btn-light{background:#fff;border-color:var(--line-2)}.btn-light:hover{border-color:var(--ink)}
-.btn-clay{background:var(--clay);color:#fff;border-color:var(--clay)}
+.btn-clay{background:var(--forest);color:#fff;border-color:var(--forest)}
 .btn-outline{background:transparent;border-color:var(--ink);color:var(--ink)}
 .btn-outline:hover{background:var(--ink);color:#fff}
 .btn-sm{padding:.42rem .85rem;font-size:.82rem}.btn-block{width:100%}

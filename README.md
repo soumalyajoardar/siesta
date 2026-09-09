@@ -71,6 +71,8 @@ backups only and are not deployed.
   colours, pricing, badges — changes go live in the store immediately
 - **Orders** — filter by status, advance Confirmed → … → Delivered
   (customers see it live on Track Order), cancel
+- **Customers** — every registered shopper (accounts + addresses live in the
+  database, so login roams across devices; passwords never shown)
 - **Reviews** — verified-purchase reviews customers write from delivered
   orders; publish publicly on product pages, delete abuse here
 - **Settings** — thresholds, announcement bar, and the admin password change

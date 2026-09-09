@@ -329,6 +329,109 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not cancel the order." }); }
 });
 
+/* ---------------- customer auth (server-side accounts, cross-device) ---------------- */
+const { requireCustomer, sanitizeCustomer, custSign } = require("./auth.cjs");
+const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || ""));
+const isPhone = (v) => /^[6-9]\d{9}$/.test(String(v || "").replace(/\D/g, "").slice(-10));
+const custHash = (pw, salt) => require("crypto").scryptSync(String(pw), salt, 64).toString("hex");
+
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { name, email, password, phone, marketing } = req.body || {};
+    if (String(name || "").trim().length < 3) return res.status(400).json({ error: "Enter your full name." });
+    if (!isEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+    if (String(password || "").length < 8) return res.status(400).json({ error: "Use at least 8 characters." });
+    if (phone && !isPhone(phone)) return res.status(400).json({ error: "Enter a valid 10-digit mobile number or leave it blank." });
+    const cleanEmail = String(email).trim().toLowerCase();
+    const list = await store.getCustomers();
+    if (list.some((u) => u.email === cleanEmail)) return res.status(409).json({ error: "An account with this email already exists. Try logging in instead." });
+    const salt = require("crypto").randomBytes(16).toString("hex");
+    const user = {
+      id: "cu_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      name: String(name).trim(), email: cleanEmail,
+      phone: phone ? String(phone).replace(/\D/g, "").slice(-10) : "",
+      salt, hash: custHash(password, salt),
+      marketing: !!marketing, addresses: [],
+      createdAt: new Date().toISOString(),
+    };
+    await store.saveCustomers([user, ...list]);
+    res.status(201).json({ token: await custSign(user.id), user: sanitizeCustomer(user) });
+  } catch (e) { res.status(500).json({ error: "Could not create your account. Please try again." }); }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const ip = req.ip;
+  if (rateLimited(ip)) return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+  try {
+    const { email, password } = req.body || {};
+    const user = (await store.getCustomers()).find((u) => u.email === String(email || "").trim().toLowerCase());
+    const ok = user && (() => { try { return require("crypto").timingSafeEqual(Buffer.from(custHash(password, user.salt), "hex"), Buffer.from(user.hash, "hex")); } catch { return false; } })();
+    if (!ok) { recordFailure(ip); return res.status(401).json({ error: "Incorrect email or password. Please try again." }); }
+    res.json({ token: await custSign(user.id), user: sanitizeCustomer(user) });
+  } catch (e) { res.status(500).json({ error: "Login failed. Please try again." }); }
+});
+
+app.get("/api/auth/me", requireCustomer, (req, res) => res.json({ user: sanitizeCustomer(req.customer) }));
+
+app.patch("/api/auth/me", requireCustomer, async (req, res) => {
+  try {
+    const { name, phone, marketing } = req.body || {};
+    if (name !== undefined && String(name).trim().length < 3) return res.status(400).json({ error: "Enter your full name." });
+    if (phone !== undefined && phone !== "" && !isPhone(phone)) return res.status(400).json({ error: "Enter a valid 10-digit mobile number." });
+    const list = await store.getCustomers();
+    const u = list.find((x) => x.id === req.customer.id);
+    if (!u) return res.status(404).json({ error: "Account not found." });
+    if (name !== undefined) u.name = String(name).trim();
+    if (phone !== undefined) u.phone = phone ? String(phone).replace(/\D/g, "").slice(-10) : "";
+    if (marketing !== undefined) u.marketing = !!marketing;
+    await store.saveCustomers(list);
+    res.json({ user: sanitizeCustomer(u) });
+  } catch (e) { res.status(500).json({ error: "Could not update your profile." }); }
+});
+
+app.post("/api/auth/password", requireCustomer, async (req, res) => {
+  try {
+    const { current, next } = req.body || {};
+    const list = await store.getCustomers();
+    const u = list.find((x) => x.id === req.customer.id);
+    if (!u) return res.status(404).json({ error: "Account not found." });
+    let ok = false;
+    try { ok = require("crypto").timingSafeEqual(Buffer.from(custHash(current, u.salt), "hex"), Buffer.from(u.hash, "hex")); } catch { ok = false; }
+    if (!ok) return res.status(401).json({ error: "Your current password is incorrect." });
+    if (String(next || "").length < 8) return res.status(400).json({ error: "New password must be at least 8 characters." });
+    u.salt = require("crypto").randomBytes(16).toString("hex");
+    u.hash = custHash(next, u.salt);
+    await store.saveCustomers(list);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not change your password." }); }
+});
+
+// Full-replace address sync (validated lightly; detail rules live at checkout).
+app.put("/api/auth/addresses", requireCustomer, async (req, res) => {
+  try {
+    const addrs = Array.isArray(req.body && req.body.addresses) ? req.body.addresses.slice(0, 10) : null;
+    if (!addrs) return res.status(400).json({ error: "Addresses must be a list." });
+    for (const a of addrs) {
+      if (!a || typeof a !== "object") return res.status(400).json({ error: "Invalid address entry." });
+      for (const f of ["name", "phone", "line1", "city", "pin"]) {
+        if (!String(a[f] || "").trim()) return res.status(400).json({ error: "Each address needs name, phone, street, city and PIN." });
+      }
+      if (!/^\d{6}$/.test(String(a.pin).trim())) return res.status(400).json({ error: "Each address needs a valid 6-digit PIN." });
+    }
+    const list = await store.getCustomers();
+    const u = list.find((x) => x.id === req.customer.id);
+    if (!u) return res.status(404).json({ error: "Account not found." });
+    u.addresses = addrs.map((a) => ({
+      id: String(a.id || ("ad_" + Math.random().toString(36).slice(2, 9))),
+      name: String(a.name).trim(), phone: String(a.phone).trim(), line1: String(a.line1).trim(),
+      land: String(a.land || "").trim(), city: String(a.city).trim(), state: String(a.state || "").trim(),
+      pin: String(a.pin).trim(), country: "India", isDefault: !!a.isDefault,
+    }));
+    await store.saveCustomers(list);
+    res.json({ addresses: u.addresses });
+  } catch (e) { res.status(500).json({ error: "Could not save addresses." }); }
+});
+
 /* ---------------- admin auth ---------------- */
 app.post("/api/admin/login", async (req, res) => {
   const ip = req.ip;
@@ -591,6 +694,16 @@ app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
     await store.saveReviews((await getReviews()).filter((r) => r.id !== req.params.id));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: "Could not delete the review." }); }
+});
+
+/* ---------------- admin: customers (read-only list, no password data) ---------------- */
+app.get("/api/admin/customers", requireAdmin, async (req, res) => {
+  try {
+    res.json((await store.getCustomers()).map((u) => ({
+      id: u.id, name: u.name, email: u.email, phone: u.phone || "",
+      marketing: !!u.marketing, addresses: (u.addresses || []).length, createdAt: u.createdAt,
+    })));
+  } catch (e) { res.status(500).json({ error: "Could not load customers." }); }
 });
 
 /* ---------------- admin: settings + stats ---------------- */

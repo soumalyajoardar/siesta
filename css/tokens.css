@@ -9,9 +9,9 @@
   --line-2:#D8D2C8;
   --sand:#F3F0EA;
   --sand-2:#ECE8E0;
-  --forest:#1A3C34;
+  --forest:#1A3C34; /* primary accent: badges, key CTAs, highlights */
   --forest-deep:#122A24;
-  --clay:#B4532A;
+  --clay:#B4532A; /* reserved: logo dot + micro-accents only, never large surfaces */
   --clay-deep:#8F3F1F;
   --sage:#DDE5DD;
   --gold:#C9A227;
@@ -26,8 +26,8 @@
   --shadow-md:0 8px 28px rgba(20,20,20,.10);
   --shadow-lg:0 24px 64px rgba(20,20,20,.16);
   --font-body:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --font-display:Georgia,"Times New Roman","Noto Serif",serif;
-  --max:1280px;
+  --font-display:"Fraunces",Georgia,"Times New Roman","Noto Serif",serif;
+  --max:1400px;
   --header-h:68px;
   --ease:cubic-bezier(.22,.61,.36,1);
 }
@@ -50,3 +50,7 @@ input,select,textarea{font:inherit}
 .skip-link:focus{top:12px;color:#fff}
 .muted{color:var(--muted)}
 [hidden]{display:none!important}
+/* Film grain: one ultra-subtle fixed overlay so large flat surfaces (sand
+   sections, cards) read tactile instead of digital. Static, pointer-transparent. */
+body::after{content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");}

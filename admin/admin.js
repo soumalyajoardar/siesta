@@ -88,12 +88,12 @@
   $("#logoutBtn").addEventListener("click", showLogin);
 
   /* ---------- router ---------- */
-  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", reviews: "Reviews", coupons: "Coupons", media: "Media Library", settings: "Settings" };
+  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", customers: "Customers", reviews: "Reviews", coupons: "Coupons", media: "Media Library", settings: "Settings" };
   let productsCache = [];
   function nav(view) {
     $$("#sideNav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     $("#viewTitle").textContent = TITLES[view];
-    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, reviews: vReviews, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
+    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, customers: vCustomers, reviews: vReviews, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
   }
   $("#sideNav").addEventListener("click", (e) => { if (e.target.dataset.view) nav(e.target.dataset.view); });
 
@@ -563,6 +563,24 @@
       try { await doSaveHomepage(false); }
       catch (err) { toast(err.message, "error"); }
     });
+  }
+
+  /* ---------- customers (read-only; passwords never leave the server) ---------- */
+  async function vCustomers() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/customers");
+      $("#view").innerHTML = `
+        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="stat"><span>Total customers</span><strong>${list.length}</strong></div>
+          <div class="stat"><span>Marketing opt-ins</span><strong>${list.filter((c) => c.marketing).length}</strong></div>
+        </div>
+        <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+          <tr><th>Customer</th><th>Phone</th><th>Addresses</th><th>Joined</th></tr>
+          ${list.map((c) => `<tr><td><strong>${esc(c.name)}</strong><br /><span class="muted small">${esc(c.email)}${c.marketing ? " · ✉ offers" : ""}</span></td><td>${esc(c.phone || "—")}</td><td>${c.addresses}</td><td class="muted small">${new Date(c.createdAt).toLocaleDateString("en-IN")}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">No customer accounts yet.</td></tr>`}
+        </table></div>
+        <p class="muted small">Accounts live in the database, so customers stay logged in on every device. Passwords are stored hashed and are never shown here.</p>`;
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }
 
   /* ---------- reviews (moderation) ---------- */

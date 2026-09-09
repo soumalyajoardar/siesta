@@ -7,8 +7,15 @@ let healthCache = { at: 0, ok: false };
 let catalogCache = null;
 let couponCache = null;
 
-async function getJSON(path) {
-  const r = await fetch(path, { headers: { Accept: "application/json" } });
+async function getJSON(path, headers) {
+  let r;
+  try {
+    r = await fetch(path, { headers: { Accept: "application/json", ...(headers || {}) } });
+  } catch (e) {
+    const err = new Error("Network unavailable.");
+    err.network = true;
+    throw err;
+  }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     const err = new Error(data.error || "Request failed.");
@@ -99,6 +106,68 @@ export async function serverCreateOrder(payload) {
 
 export async function serverFetchOrder(orderNo) {
   return getJSON("/api/orders/" + encodeURIComponent(orderNo));
+}
+
+// ---------- Customer auth (server JWT; token lives per-device, account roams) ----------
+export const getToken = () => {
+  try { return localStorage.getItem("siesta.token") || sessionStorage.getItem("siesta.token"); }
+  catch { return null; }
+};
+export function setToken(token, remember) {
+  try {
+    localStorage.removeItem("siesta.token");
+    sessionStorage.removeItem("siesta.token");
+    (remember !== false ? localStorage : sessionStorage).setItem("siesta.token", token);
+  } catch {}
+}
+export function clearToken() {
+  try { localStorage.removeItem("siesta.token"); sessionStorage.removeItem("siesta.token"); } catch {}
+}
+const authH = () => ({ Authorization: "Bearer " + getToken() });
+async function sendJSON(path, body, { method = "POST", auth = false } = {}) {
+  let r;
+  try {
+    r = await fetch(path, {
+      method, headers: { "Content-Type": "application/json", Accept: "application/json", ...(auth ? authH() : {}) },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const err = new Error("Network unavailable.");
+    err.network = true;
+    throw err;
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(data.error || "Request failed.");
+    err.status = r.status;
+    throw err;
+  }
+  return data;
+}
+export const authRegister = (d) => sendJSON("/api/auth/register", d);
+export const authLogin = (d) => sendJSON("/api/auth/login", d);
+export const authMe = () => getJSON("/api/auth/me", authH());
+export const authUpdate = (d) => sendJSON("/api/auth/me", d, { method: "PATCH", auth: true });
+export const authPassword = (d) => sendJSON("/api/auth/password", d, { auth: true });
+export async function authAddresses(list) {
+  let r;
+  try {
+    r = await fetch("/api/auth/addresses", {
+      method: "PUT", headers: { "Content-Type": "application/json", Accept: "application/json", ...authH() },
+      body: JSON.stringify({ addresses: list }),
+    });
+  } catch (e) {
+    const err = new Error("Network unavailable.");
+    err.network = true;
+    throw err;
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(data.error || "Request failed.");
+    err.status = r.status;
+    throw err;
+  }
+  return data;
 }
 
 export async function serverCancelOrder(orderNo) {

@@ -1,0 +1,9 @@
+/* Fraunces variable serif — self-hosted (no third-party requests).
+   OFL-licensed, source: google/fonts. Covers wght 100-900 + optical sizing. */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/Fraunces-var.ttf") format("truetype-variations");
+}

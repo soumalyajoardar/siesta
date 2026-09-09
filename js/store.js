@@ -39,8 +39,16 @@ export async function hashPassword(password, salt) {
 const makeSalt = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 // ---------- Users / session ----------
+// Dual mode: server accounts (JWT, cross-device) when the backend is
+// reachable, otherwise the original browser-local demo accounts.
+import { apiHealth, authRegister, authLogin, authMe, authUpdate, authPassword, authAddresses, getToken, setToken, clearToken } from "./api.js";
+
+let meCache = { at: 0, user: null };
+const ME_TTL = 60 * 1000;
+const dropCache = () => { meCache = { at: 0, user: null }; };
+
 export function getUsers() { return read(K.users, []); }
-export function currentUser() {
+function currentUserLocal() {
   try {
     const s = sessionStorage.getItem(K.session) || localStorage.getItem(K.remember);
     if (!s) return null;
@@ -48,7 +56,24 @@ export function currentUser() {
     return getUsers().find((u) => u.email === email) || null;
   } catch { return null; }
 }
-export async function register({ name, email, password, phone, marketing }) {
+export async function currentUser() {
+  try {
+    if (await apiHealth()) {
+      if (!getToken()) { dropCache(); return currentUserLocal(); }
+      if (meCache.user && Date.now() - meCache.at < ME_TTL) return meCache.user;
+      try {
+        const data = await authMe();
+        meCache = { at: Date.now(), user: data.user };
+        return data.user;
+      } catch (e) {
+        if (e.status === 401) { clearToken(); dropCache(); return null; }
+        return meCache.user || currentUserLocal();
+      }
+    }
+  } catch { /* fall through to local */ }
+  return currentUserLocal();
+}
+async function registerLocal({ name, email, password, phone, marketing }) {
   email = email.trim().toLowerCase();
   const users = getUsers();
   if (users.some((u) => u.email === email)) throw new Error("An account with this email already exists. Try logging in instead.");
@@ -61,7 +86,23 @@ export async function register({ name, email, password, phone, marketing }) {
   emit();
   return user;
 }
-export async function login(email, password, remember) {
+export async function register(input) {
+  try {
+    if (await apiHealth()) {
+      try {
+        const data = await authRegister(input);
+        setToken(data.token, true);
+        dropCache();
+        await pullAddresses();
+        emit();
+        meCache = { at: Date.now(), user: data.user };
+        return data.user;
+      } catch (e) { if (!e.network) throw e; }
+    }
+  } catch { /* fall through to local demo */ }
+  return registerLocal(input);
+}
+async function loginLocal(email, password, remember) {
   email = email.trim().toLowerCase();
   const user = getUsers().find((u) => u.email === email);
   if (!user) throw new Error("We couldn't find an account with this email. Check the spelling or create a new account.");
@@ -71,6 +112,22 @@ export async function login(email, password, remember) {
   emit();
   return user;
 }
+export async function login(email, password, remember) {
+  try {
+    if (await apiHealth()) {
+      try {
+        const data = await authLogin({ email, password });
+        setToken(data.token, remember !== false);
+        dropCache();
+        await pullAddresses();
+        emit();
+        meCache = { at: Date.now(), user: data.user };
+        return data.user;
+      } catch (e) { if (!e.network) throw e; }
+    }
+  } catch { /* fall through to local demo */ }
+  return loginLocal(email, password, remember);
+}
 function setSession(email, remember) {
   sessionStorage.removeItem(K.session); localStorage.removeItem(K.remember);
   const payload = JSON.stringify({ email, at: Date.now() });
@@ -78,14 +135,30 @@ function setSession(email, remember) {
   else sessionStorage.setItem(K.session, payload);
 }
 export function logout() {
+  clearToken(); dropCache();
   sessionStorage.removeItem(K.session); localStorage.removeItem(K.remember);
   emit();
 }
-export function updateProfile(email, patch) {
+export async function updateProfile(email, patch) {
+  if (getToken()) {
+    try {
+      const data = await authUpdate(patch);
+      meCache = { at: Date.now(), user: data.user };
+      emit();
+      return;
+    } catch (e) { if (!e.network) throw e; }
+  }
   const users = getUsers().map((u) => (u.email === email ? { ...u, ...patch } : u));
   write(K.users, users); emit();
 }
 export async function changePassword(email, currentPw, nextPw) {
+  if (getToken()) {
+    try {
+      await authPassword({ current: currentPw, next: nextPw });
+      emit();
+      return;
+    } catch (e) { if (!e.network) throw e; }
+  }
   const users = getUsers();
   const u = users.find((x) => x.email === email);
   if (!u) throw new Error("Account not found.");
@@ -94,6 +167,26 @@ export async function changePassword(email, currentPw, nextPw) {
   const salt = makeSalt();
   u.salt = salt; u.hash = await hashPassword(nextPw, salt);
   write(K.users, users); emit();
+}
+// Server address book sync (local list is the offline cache; server wins when non-empty).
+async function pullAddresses() {
+  try {
+    const r = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + getToken() } });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !Array.isArray(data.addresses)) return;
+    if (data.addresses.length) write(K.addrs, data.addresses);
+    else if (getAddrs().length) pushAddresses();
+  } catch { /* offline: keep local */ }
+}
+function pushAddresses() {
+  try {
+    const t = getToken();
+    if (!t) return;
+    fetch("/api/auth/addresses", {
+      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
+      body: JSON.stringify({ addresses: getAddrs() }),
+    }).catch(() => {});
+  } catch { /* offline: local copy retained */ }
 }
 
 // ---------- Cart ----------
@@ -176,9 +269,10 @@ export function saveAddr(a) {
   }
   if (a.isDefault) list.forEach((x) => { if (x.id !== a.id) x.isDefault = false; });
   write(K.addrs, list); emit();
+  pushAddresses();
   return a;
 }
-export function deleteAddr(id) { write(K.addrs, getAddrs().filter((x) => x.id !== id)); emit(); }
+export function deleteAddr(id) { write(K.addrs, getAddrs().filter((x) => x.id !== id)); emit(); pushAddresses(); }
 
 // ---------- Orders (local order-state simulation — NOT courier scans) ----------
 const STAGES = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];

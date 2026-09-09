@@ -41,7 +41,7 @@ async function render() {
   // Logged-out visitors get the main page for account-only routes —
   // no dead ends, no login walls on guessed URLs.
   const PROTECTED = ["account", "orders", "checkout", "success"];
-  if (PROTECTED.includes(segs[0]) && !S.currentUser()) {
+  if (PROTECTED.includes(segs[0]) && !(await S.currentUser())) {
     toast("Please log in to continue.");
     location.replace("#/");
     barDone();
@@ -127,9 +127,12 @@ export function updateCounts() {
   // Logged-out visitors go to login, members to their account.
   const ab = document.getElementById("accountBtn");
   if (ab) {
-    const logged = !!S.currentUser();
-    ab.setAttribute("href", logged ? "#/account" : "#/login");
-    ab.setAttribute("aria-label", logged ? "My account" : "Log in to your account");
+    S.currentUser().then((u) => {
+      const el = document.getElementById("accountBtn");
+      if (!el) return;
+      el.setAttribute("href", u ? "#/account" : "#/login");
+      el.setAttribute("aria-label", u ? "My account" : "Log in to your account");
+    }).catch(() => {});
   }
 }
 document.addEventListener("siesta:counts", updateCounts);

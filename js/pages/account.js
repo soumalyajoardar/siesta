@@ -5,8 +5,8 @@ import { esc, inr, setTitle, toast, confirmDialog, isEmail } from "../ui.js";
 import { serverCancelOrder } from "../api.js";
 import { openReviewModal } from "./commerce.js";
 
-const needAuth = () => {
-  const u = S.currentUser();
+const needAuth = async () => {
+  const u = await S.currentUser();
   if (!u) { location.hash = "#/login?next=" + encodeURIComponent(location.hash.slice(1)); return null; }
   return u;
 };
@@ -102,11 +102,16 @@ export function ForgotPage() {
 // ---------- ACCOUNT ----------
 const NAV = [["overview", "Overview"], ["orders", "Orders"], ["addresses", "Addresses"], ["profile", "Profile"], ["security", "Security"], ["prefs", "Preferences"]];
 export function AccountPage(tab = "overview") {
-  const u = needAuth();
-  if (!u) return `<div class="page"><p>Redirecting to login…</p></div>`;
   setTitle("My Account — Siesta", "Manage orders, addresses and settings.");
-  setTimeout(() => wireAccount(tab, u));
-  return `<div class="page"><span class="eyebrow">Hello, ${esc(u.name.split(" ")[0])}</span><h1 class="h-display" style="font-size:2rem">My account</h1>
+  setTimeout(async () => {
+    if (!document.getElementById("acctMain")) return;
+    const u = await needAuth();
+    if (!u) return;
+    const hello = document.getElementById("acctHello");
+    if (hello) hello.textContent = `Hello, ${u.name.split(" ")[0]}`;
+    wireAccount(tab, u);
+  });
+  return `<div class="page"><span class="eyebrow" id="acctHello">My account</span><h1 class="h-display" style="font-size:2rem">My account</h1>
   <div class="acct"><nav class="acct-nav" aria-label="Account sections">${NAV.map(([id, l]) => `<a href="#/account/${id}" ${tab === id ? 'aria-current="page"' : ""}>${l}</a>`).join("")}<a href="#/track">Track Order</a><a href="#/wishlist">Wishlist</a><button class="link-btn" id="logoutBtn" style="text-align:left;padding:.65rem .85rem">Log out</button></nav>
   <div id="acctMain"><div class="card"><div class="skel" style="height:120px"></div></div></div></div></div>`;
 }
@@ -136,22 +141,34 @@ function wireAccount(tab, u) {
       try { await serverCancelOrder(b.dataset.cancel); } catch (e) { if (e.status && e.status !== 404) { toast(e.message, "error"); return; } }
       S.cancelOrder(b.dataset.cancel);
       toast("Order cancelled.");
-      wireAccount(tab, S.currentUser());
+      wireAccount(tab, await S.currentUser());
     }));
   } else if (tab === "addresses") {
     const list = S.getAddrs();
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Saved addresses</h3><div class="addr-grid">${list.map((a) => `<div class="addr-card ${a.isDefault ? "default" : ""}"><strong>${esc(a.name)}</strong> ${a.isDefault ? '<span class="pill">Default</span>' : ""}<br/><span class="muted">${esc(a.line1)}, ${esc(a.city)} ${esc(a.pin)}<br/>${esc(a.phone)}</span><div style="display:flex;gap:.6rem;margin-top:.5rem"><button class="link-btn" data-del="${a.id}">Delete</button></div></div>`).join("") || '<p class="muted">No saved addresses yet.</p>'}</div>
     <form id="addrMini" class="form-grid" style="margin-top:1rem"><div class="field"><label>Full name *</label><input name="name" class="input" required/></div><div class="field"><label>Phone *</label><input name="phone" class="input" required/></div><div class="field full"><label>Address *</label><input name="line1" class="input" required/></div><div class="field"><label>City *</label><input name="city" class="input" required/></div><div class="field"><label>PIN *</label><input name="pin" class="input" required/></div><div class="full"><button class="btn btn-dark" type="submit">Save Address</button></div></form></div>`;
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => { S.deleteAddr(b.dataset.del); toast("Address deleted."); wireAccount(tab, S.currentUser()); }));
-    main.querySelector("#addrMini").onsubmit = (e) => {
+    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { S.deleteAddr(b.dataset.del); toast("Address deleted."); wireAccount(tab, await S.currentUser()); }));
+    main.querySelector("#addrMini").onsubmit = async (e) => {
       e.preventDefault();
       const v = Object.fromEntries(new FormData(e.target).entries());
       if (!v.name || !v.phone || !v.line1 || !v.city || !/^\d{6}$/.test(String(v.pin || "").trim())) { toast("Fill all fields with a valid 6-digit PIN.", "error"); return; }
-      S.saveAddr({ ...v, state: "—", country: "India" }); toast("Address saved."); wireAccount(tab, S.currentUser());
+      S.saveAddr({ ...v, state: "—", country: "India" }); toast("Address saved."); wireAccount(tab, await S.currentUser());
     };
   } else if (tab === "profile") {
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Profile</h3><form id="profForm" class="form-grid"><div class="field"><label>Full name</label><input name="name" class="input" value="${esc(u.name)}"/></div><div class="field"><label>Phone</label><input name="phone" class="input" value="${esc(u.phone || "")}"/></div><div class="field full"><label>Email (cannot be changed)</label><input class="input" value="${esc(u.email)}" disabled/></div><div class="full"><button class="btn btn-dark" type="submit">Save Changes</button></div></form></div>`;
-    main.querySelector("#profForm").onsubmit = (e) => { e.preventDefault(); const v = Object.fromEntries(new FormData(e.target).entries()); S.updateProfile(u.email, { name: v.name.trim(), phone: v.phone.trim() }); toast("Profile updated."); };
+    main.querySelector("#profForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const v = Object.fromEntries(new FormData(e.target).entries());
+      const btn = e.target.querySelector('[type="submit"]');
+      btn.disabled = true;
+      try {
+        await S.updateProfile(u.email, { name: v.name.trim(), phone: v.phone.trim() });
+        toast("Profile updated.");
+        const fresh = await S.currentUser();
+        if (fresh) wireAccount(tab, fresh);
+      } catch (err) { toast(err.message, "error"); }
+      finally { btn.disabled = false; }
+    };
   } else if (tab === "security") {
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Security</h3><form id="pwForm" class="form-grid"><div class="field full"><label>Current password</label><input name="cur" type="password" class="input" autocomplete="current-password"/></div><div class="field"><label>New password (min 8 chars)</label><input name="next" type="password" class="input" autocomplete="new-password"/></div><div class="field"><label>Confirm new password</label><input name="next2" type="password" class="input" autocomplete="new-password"/></div><div class="full"><button class="btn btn-dark" type="submit">Update Password</button></div></form><p class="muted" style="font-size:.84rem">Passwords are hashed and never stored in plain text.</p></div>`;
     main.querySelector("#pwForm").onsubmit = async (e) => {
@@ -184,7 +201,7 @@ export const StaticPages = {
   faq: () => prose("Frequently Asked Questions", `<h2>Which payment methods do you accept?</h2><p>Cash on Delivery only, right now. UPI, cards, net-banking and wallets are labelled “Coming soon” and cannot be selected until a licensed payment partner is integrated.</p><h2>How long is delivery?</h2><p>Typically 3–6 business days across India. Orders ship within 24 hours on working days.</p><h2>What is the return policy?</h2><p>7-day easy returns on unworn items with tags. COD amounts are refunded via bank transfer/UPI after quality check. See <a href="#/returns">Returns & Refunds</a>.</p><h2>How do I track my order?</h2><p>Use <a href="#/track">Track Order</a> with your 12-digit order number from the confirmation screen.</p><h2>Do you have physical stores?</h2><p>Not yet — Siesta is online-only.</p>`),
   shipping: () => prose("Shipping Policy", `<p>We ship across India. Orders are packed within 24 hours on working days. Standard delivery takes 3–6 business days. Shipping is a flat ${inr(79)} and <strong>free on orders of ${inr(1499)} or more</strong> (after discounts).</p><h2>Cash on Delivery</h2><p>COD is available on orders up to ${inr(20000)}. Please keep the exact order total ready. Our courier partner will share an OTP where applicable.</p><h2>Delays</h2><p>Weather, public holidays and remote PIN codes can add 1–3 days. If your parcel is delayed beyond 8 days, contact support with your order number.</p>`),
   returns: () => prose("Returns & Refunds", `<p>You may return unworn, unwashed items with tags within <strong>7 days of delivery</strong>. For hygiene, briefs/innerwear (if ever sold) would be final sale — Siesta currently sells outerwear only.</p><h2>How to return</h2><p>Raise a request from <a href="#/account/orders">My Orders</a> or <a href="#/contact">Contact Us</a> with your order number. We arrange a doorstep pickup where serviceable.</p><h2>Refunds (COD)</h2><p>Since COD is paid at delivery, refunds are issued via bank transfer/UPI within 5–7 business days of passing quality check. No cash refunds via courier.</p><h2>Cancellations</h2><p>Cancel free of charge before the order ships, from My Orders.</p>`),
-  privacy: () => prose("Privacy Policy", `<p>We collect only what we need: account details you provide, delivery addresses, order contents, and your cookie choices. We do not collect card numbers, CVVs, UPI PINs or banking credentials — the checkout never asks for them.</p><h2>What we store and where</h2><p>Store data (products, orders, reviews and settings) is kept in our secured database; your cart, wishlist and preferences also persist in your own browser for speed. Shopper account passwords are hashed and never stored in plain text. Data travels over encrypted HTTPS connections.</p><h2>Marketing consent</h2><p>Newsletter and marketing checkboxes are never pre-checked. You can withdraw consent anytime from Account → Preferences.</p><h2>Your rights</h2><p>Access, correct or erase your data from Account settings (“Erase my data on this device”). For server-side copies, contact our grievance officer at ${esc(biz(BUSINESS.grievanceOfficer))}.</p><h2>Third parties</h2><p>We load no advertising trackers, analytics pixels, chat widgets or social embeds in this build. If any are added later, they will be listed here and gated behind cookie consent.</p>`),
+  privacy: () => prose("Privacy Policy", `<p>We collect only what we need: account details you provide, delivery addresses, order contents, and your cookie choices. We do not collect card numbers, CVVs, UPI PINs or banking credentials — the checkout never asks for them.</p><h2>What we store and where</h2><p>Your account, addresses, orders and reviews are stored in our secured database so they work on every device you log into. Your cart, wishlist and preferences also persist in your own browser for speed. Account passwords are hashed (never plaintext) and travel over encrypted HTTPS connections.</p><h2>Marketing consent</h2><p>Newsletter and marketing checkboxes are never pre-checked. You can withdraw consent anytime from Account → Preferences.</p><h2>Your rights</h2><p>Access, correct or erase your data from Account settings (“Erase my data on this device”). For server-side copies, contact our grievance officer at ${esc(biz(BUSINESS.grievanceOfficer))}.</p><h2>Third parties</h2><p>We load no advertising trackers, analytics pixels, chat widgets or social embeds in this build. If any are added later, they will be listed here and gated behind cookie consent.</p>`),
   terms: () => prose("Terms & Conditions", `<p>By using Siesta you agree to shop honestly: provide accurate delivery details, accept COD terms, and use the site lawfully. Prices are in INR and include taxes where applicable. We may cancel orders involving pricing errors, suspected fraud, or undeliverable addresses, with a full refund of any amount paid.</p><h2>Products</h2><p>Colours may vary slightly by screen. Garment measurements in the size guide are approximate (±0.5″).</p><h2>Limitation</h2><p>To the extent permitted by law, Siesta's liability is limited to the value of the affected order. Consumer rights under Indian law remain unaffected.</p>`),
   cookies: () => prose("Cookie Policy", `<p>We use four categories:</p><ul><li><strong>Necessary</strong> — cart, checkout, login, security. Always on.</li><li><strong>Preferences</strong> — filters, recently viewed. Optional.</li><li><strong>Analytics</strong> — anonymous counts. Off by default; no scripts load until you opt in.</li><li><strong>Marketing</strong> — newsletter personalisation. Off by default.</li></ul><p>Change your choice anytime via “Cookie preferences” in the footer. Consent state is stored in your browser only.</p><table class="config-table"><tr><th>Key</th><th>Purpose</th><th>Storage</th></tr><tr><td>siesta.consent.v1</td><td>Remembers cookie choice</td><td>localStorage</td></tr><tr><td>siesta.cart.v1 / wish / orders</td><td>Store features</td><td>localStorage</td></tr></table>`),
   notfound: () => `<div class="page page-narrow"><div class="empty"><h2>Page not found (404)</h2><p class="muted">The page you're looking for moved or never existed.</p><div style="display:flex;gap:.6rem;justify-content:center"><a class="btn btn-dark" href="#/">Go Home</a><a class="btn btn-light" href="#/shop">Shop All</a></div></div></div>`,

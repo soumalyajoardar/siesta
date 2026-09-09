@@ -124,4 +124,47 @@ async function requireAdmin(req, res, next) {
   }
 }
 
-module.exports = { getAdminRecord, verify, changePassword, issueToken, validToken, requireAdmin, rateLimited, recordFailure, hasEnvPassword };
+/* ---------------- customer accounts (server-side, cross-device) ---------------- */
+const CUST_JWT_SALT = "siesta-cust-jwt-v1";
+const CUST_TOKEN_TTL = 30 * 24 * 3600 * 1000; // 30 days
+async function custKey() {
+  if (process.env.CUSTOMER_JWT_SECRET) return crypto.scryptSync(String(process.env.CUSTOMER_JWT_SECRET), CUST_JWT_SALT, 32);
+  if (process.env.SUPABASE_SERVICE_KEY) return crypto.scryptSync(String(process.env.SUPABASE_SERVICE_KEY), CUST_JWT_SALT, 32);
+  const rec = await store.getAdmin().catch(() => null); // stable per install (JSON mode)
+  if (rec && rec.hash) return crypto.scryptSync(String(rec.hash), CUST_JWT_SALT, 32);
+  return crypto.randomBytes(32); // last resort: sessions die on restart (local dev only)
+}
+async function custSign(customerId) {
+  const payload = Buffer.from(JSON.stringify({ sub: customerId, exp: Date.now() + CUST_TOKEN_TTL })).toString("base64url");
+  const sig = crypto.createHmac("sha256", await custKey()).update(`cust.${payload}`).digest("hex");
+  return `cust.${payload}.${sig}`;
+}
+async function custValid(token) {
+  try {
+    if (typeof token !== "string") return null;
+    const [tag, payload, sig] = token.split(".");
+    if (tag !== "cust" || !payload || !sig) return null;
+    const expect = crypto.createHmac("sha256", await custKey()).update(`cust.${payload}`).digest("hex");
+    if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expect, "hex"))) return null;
+    const { sub, exp } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!(Number(exp) > Date.now())) return null;
+    const list = await store.getCustomers();
+    return list.find((u) => u.id === sub) || null;
+  } catch {
+    return null;
+  }
+}
+async function requireCustomer(req, res, next) {
+  try {
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    const user = await custValid(token);
+    if (!user) return res.status(401).json({ error: "Please log in to continue." });
+    req.customer = user;
+    next();
+  } catch {
+    res.status(401).json({ error: "Please log in to continue." });
+  }
+}
+const sanitizeCustomer = (u) => (u ? { id: u.id, name: u.name, email: u.email, phone: u.phone || "", marketing: !!u.marketing, createdAt: u.createdAt } : null);
+
+module.exports = { getAdminRecord, verify, changePassword, issueToken, validToken, requireAdmin, rateLimited, recordFailure, hasEnvPassword, custSign, custValid, requireCustomer, sanitizeCustomer };
