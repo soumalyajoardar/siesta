@@ -302,6 +302,7 @@ li.active .tick{border-color:var(--forest)}
 .timeline{list-style:none;margin:0;padding:0;position:relative}
 .timeline::before{content:"";position:absolute;left:11px;top:8px;bottom:8px;width:2px;background:var(--line-2)}
 .timeline li{position:relative;z-index:1;padding:0 0 1.2rem 2.2rem}
+.timeline li:last-child{padding-bottom:0}
 .timeline .dot{position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:999px;background:#fff;border:2px solid var(--line-2)}
 .timeline li.done .dot{background:var(--forest);border-color:var(--forest)}
 .timeline li.current .dot{border-color:var(--forest);box-shadow:0 0 0 4px rgba(26,60,52,.15)}
