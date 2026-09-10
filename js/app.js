@@ -353,3 +353,11 @@ function hideSplash() {
   onScroll();
   toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" }));
 }
+
+// ---------- Background polling for restock notifications ----------
+setInterval(() => {
+  let notifies = JSON.parse(localStorage.getItem("siesta.notify") || "[]");
+  if (notifies.length > 0) {
+    loadCatalog();
+  }
+}, 10000);

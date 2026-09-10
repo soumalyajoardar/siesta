@@ -61,7 +61,7 @@ export function cardHTML(p, i = 0) {
       <div class="p-price"><span class="price">${inr(p.price)}</span>${p.mrp > p.price ? `<span class="mrp">${inr(p.mrp)}</span><span class="off">${off}% off</span>` : ""}</div>
       <span class="stock-note ${stockCls}">${stockTxt}</span>
       <div class="p-actions">
-        <button class="btn btn-dark" data-add="${p.id}" ${!inStock(p) ? "disabled" : ""}>${inStock(p) ? "Add to Cart" : "Notify Me"}</button>
+        ${inStock(p) ? `<button class="btn btn-dark" data-add="${p.id}">Add to Cart</button>` : `<button class="btn btn-dark" data-notify="${p.id}">Notify Me</button>`}
       </div>
     </div>
   </article>`;
@@ -94,7 +94,29 @@ export function bindCards(root) {
       document.dispatchEvent(new CustomEvent("siesta:counts"));
     } catch (err) { toast(err.message, "error"); }
   }));
+  root.querySelectorAll("[data-notify]").forEach((b) => (b.onclick = () => handleNotify(b.dataset.notify)));
   root.querySelectorAll("[data-quick]").forEach((b) => (b.onclick = () => quickView(b.dataset.quick)));
+}
+
+export async function handleNotify(id) {
+  if (!("Notification" in window)) {
+    toast("Notifications are not supported in this browser.", "error");
+    return;
+  }
+  let p = Notification.permission;
+  if (p === "default") {
+    p = await Notification.requestPermission();
+  }
+  if (p !== "granted") {
+    toast("Please allow notifications in your browser settings to get restock alerts.", "error");
+    return;
+  }
+  let notifies = JSON.parse(localStorage.getItem("siesta.notify") || "[]");
+  if (!notifies.includes(id)) {
+    notifies.push(id);
+    localStorage.setItem("siesta.notify", JSON.stringify(notifies));
+  }
+  toast("We will notify you when this product comes to stock again.");
 }
 
 export function quickView(id) {
@@ -523,20 +545,28 @@ export function ProductPage(id) {
       document.dispatchEvent(new CustomEvent("siesta:counts"));
     };
     const needSize = () => { if (!size) { root.querySelector("#sizeErr").textContent = "Please choose a size."; root.querySelector("[data-size]")?.focus(); return true; } return false; };
-    root.querySelector("#addBtn").onclick = (e) => {
-      if (needSize()) return;
-      try {
-        addToCart(p.id, size, color, qty);
-        if (window.openCartDrawer) window.openCartDrawer();
-        else flyToCart(e.currentTarget);
-        document.dispatchEvent(new CustomEvent("siesta:counts"));
-      } catch (err) { toast(err.message, "error"); }
-    };
-    root.querySelector("#buyBtn").onclick = () => {
-      if (needSize()) return;
-      try { addToCart(p.id, size, color, qty); document.dispatchEvent(new CustomEvent("siesta:counts")); window.navigate("/checkout"); }
-      catch (err) { toast(err.message, "error"); }
-    };
+    const addBtn = root.querySelector("#addBtn");
+    if (addBtn) {
+      addBtn.onclick = (e) => {
+        if (needSize()) return;
+        try {
+          addToCart(p.id, size, color, qty);
+          if (window.openCartDrawer) window.openCartDrawer();
+          else flyToCart(e.currentTarget);
+          document.dispatchEvent(new CustomEvent("siesta:counts"));
+        } catch (err) { toast(err.message, "error"); }
+      };
+      root.querySelector("#buyBtn").onclick = () => {
+        if (needSize()) return;
+        try { addToCart(p.id, size, color, qty); document.dispatchEvent(new CustomEvent("siesta:counts")); window.navigate("/checkout"); }
+        catch (err) { toast(err.message, "error"); }
+      };
+    }
+    
+    const notifyBtn = root.querySelector("#notifyBtn");
+    if (notifyBtn) {
+      notifyBtn.onclick = () => handleNotify(notifyBtn.dataset.notify);
+    }
     
     // Sticky PDP Bar
     const stickyBar = root.querySelector("#stickyPdpBar");
@@ -544,8 +574,14 @@ export function ProductPage(id) {
       const observer = new IntersectionObserver((entries) => {
         stickyBar.hidden = entries[0].isIntersecting;
       }, { threshold: 0 });
-      observer.observe(root.querySelector("#addBtn"));
-      root.querySelector("#stickyAddBtn").onclick = () => root.querySelector("#addBtn").click();
+      if (addBtn) observer.observe(addBtn);
+      else if (notifyBtn) observer.observe(notifyBtn);
+      
+      const stickyAddBtn = root.querySelector("#stickyAddBtn");
+      if (stickyAddBtn) stickyAddBtn.onclick = () => addBtn.click();
+      
+      const stickyNotifyBtn = root.querySelector("#stickyNotifyBtn");
+      if (stickyNotifyBtn) stickyNotifyBtn.onclick = () => notifyBtn.click();
     }
     root.querySelector("#sizeGuideBtn").onclick = () => openModal("Size guide", `<table class="spec-table"><tr><th>Size</th><th>Chest (in)</th><th>Waist (in)</th></tr>${[["XS", "34", "28"], ["S", "36", "30"], ["M", "38", "32"], ["L", "40", "34"], ["XL", "42", "36"], ["XXL", "44", "38"]].map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</table><p class="muted" style="font-size:.85rem">Between sizes? We recommend sizing up for relaxed fits and down for tailored fits.</p>`);
     const gMain = root.querySelector("#gMain");
@@ -639,8 +675,9 @@ export function ProductPage(id) {
         <div class="opt-label"><span>Quantity</span></div>
         <div class="qty" aria-label="Quantity selector"><button id="qMinus" aria-label="Decrease quantity">−</button><output id="qOut" aria-live="polite">1</output><button id="qPlus" aria-label="Increase quantity">+</button></div>
         <div class="pdp-cta">
-          <button class="btn btn-dark" id="addBtn" ${!inStock(p) ? "disabled" : ""}>Add to Cart</button>
-          <button class="btn btn-outline" id="buyBtn" ${!inStock(p) ? "disabled" : ""}>Buy Now</button>
+          ${inStock(p) ? `<button class="btn btn-dark" id="addBtn">Add to Cart</button>
+          <button class="btn btn-outline" id="buyBtn">Buy Now</button>` : `<button class="btn btn-dark" id="notifyBtn" data-notify="${p.id}">Notify Me</button>
+          <button class="btn btn-outline" disabled>Buy Now</button>`}
         </div>
         <button class="btn btn-ghost btn-sm" id="wishBtn" aria-pressed="${wished}" style="margin-top:.5rem">♡ <span>${wished ? "Saved to Wishlist" : "Add to Wishlist"}</span></button>
         <p class="muted" style="font-size:.86rem">Cash on Delivery available · Estimated delivery ${eta()} · 7-day easy returns</p>
@@ -657,7 +694,7 @@ export function ProductPage(id) {
           <p style="margin:0; font-size:0.9rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.name)}</p>
           <p style="margin:0; font-size:0.8rem; color:var(--muted)">${inr(p.price)}</p>
         </div>
-        <button class="btn btn-dark btn-sm" id="stickyAddBtn" style="flex-shrink:0" ${!inStock(p) ? "disabled" : ""}>Add to Cart</button>
+        ${inStock(p) ? `<button class="btn btn-dark btn-sm" id="stickyAddBtn" style="flex-shrink:0">Add to Cart</button>` : `<button class="btn btn-dark btn-sm" id="stickyNotifyBtn" data-notify="${p.id}" style="flex-shrink:0">Notify Me</button>`}
       </div>
     </div>
     <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>

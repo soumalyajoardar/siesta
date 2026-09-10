@@ -40,6 +40,27 @@ export async function loadCatalog() {
   try {
     const list = await getJSON("/api/products");
     if (Array.isArray(list) && list.length) catalogCache = list;
+    
+    // Check for restocked products for notifications
+    if ("Notification" in window && Notification.permission === "granted") {
+      let notifies = JSON.parse(localStorage.getItem("siesta.notify") || "[]");
+      let activeNotifies = [];
+      let updated = false;
+      for (const id of notifies) {
+        const p = catalogCache.find(x => x.id === id);
+        if (p && p.stock > 0) {
+          new Notification("Siesta Restock Alert", { body: `${p.name} is available again in stock!`, icon: "/icon.png" });
+          updated = true;
+        } else {
+          activeNotifies.push(id);
+        }
+      }
+      if (updated) {
+        localStorage.setItem("siesta.notify", JSON.stringify(activeNotifies));
+        // If on a PDP or shop page, emit an event so it enables the Add to Cart button
+        document.dispatchEvent(new CustomEvent("siesta:reroute", { detail: { keep: true } }));
+      }
+    }
   } catch { /* offline/static fallback */ }
   // Warm the connection to the image host before first paint needs it.
   try {
