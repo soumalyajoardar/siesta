@@ -619,12 +619,22 @@
     $("#view").innerHTML = "<p class='muted'>Loading…</p>";
     try {
       const orders = await api("/api/admin/orders");
-      const statuses = ["all", "confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"];
+      const tabs = ["all", "pending", "delivered", "cancelled"];
       $("#view").innerHTML = `
-        <div class="toolbar"><select id="osf" aria-label="Filter by status">${statuses.map((s) => `<option>${s}</option>`).join("")}</select><span class="muted small">${orders.length} orders</span></div>
+        <div class="toolbar" style="gap:.5rem; justify-content:flex-start;">
+          <div id="osf" style="display:flex;gap:.5rem">
+            ${tabs.map((t) => `<button class="btn btn-sm ${t === 'all' ? 'btn-dark' : 'btn-outline'}" data-tab="${t}" style="text-transform:capitalize">${t}</button>`).join("")}
+          </div>
+          <span class="muted small" style="margin-left:auto" id="oCount">${orders.length} orders</span>
+        </div>
         <div id="olist"></div>`;
       const draw = (f) => {
-        const list = orders.filter((o) => f === "all" || o.status === f);
+        const list = orders.filter((o) => {
+          if (f === "all") return true;
+          if (f === "pending") return !["delivered", "cancelled"].includes(o.status);
+          return o.status === f;
+        });
+        $("#oCount").textContent = `${list.length} orders`;
         $("#olist").innerHTML = list.map((o) => `
           <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
             <div><strong>${esc(o.orderNo)}</strong><br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
@@ -656,7 +666,15 @@
         }));
       };
       draw("all");
-      $("#osf").addEventListener("change", (e) => draw(e.target.value));
+      $$("#osf button").forEach((b) => b.addEventListener("click", () => {
+        $$("#osf button").forEach(btn => {
+          btn.classList.remove("btn-dark");
+          btn.classList.add("btn-outline");
+        });
+        b.classList.remove("btn-outline");
+        b.classList.add("btn-dark");
+        draw(b.dataset.tab);
+      }));
     } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }
 
