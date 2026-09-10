@@ -95,7 +95,7 @@
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <div class="announce-bar" role="region" aria-label="Store announcement">
-    <p><span aria-hidden="true">●</span> Complimentary shipping on orders over ₹1,499 <span class="announce-sep" aria-hidden="true">·</span> COD available across India</p>
+    <p><span aria-hidden="true">●</span> Free Express Delivery on orders over ₹1,499 <span class="announce-sep" aria-hidden="true">·</span> 7-Day Easy Returns</p>
   </div>
 
   <header class="site-header" id="siteHeader">
@@ -145,8 +145,16 @@
     </div>
   </header>
 
-  <!-- Mobile nav drawer -->
+  <!-- Overlays -->
   <div class="scrim" id="scrim" hidden></div>
+  <div class="cart-drawer" id="cartDrawer" aria-hidden="true" role="dialog" aria-label="Your Cart">
+    <div class="cart-drawer-head">
+      <h2>Your Cart</h2>
+      <button class="icon-btn" id="cartDrawerClose" aria-label="Close cart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div id="cartDrawerContent" class="cart-drawer-body"></div>
+    <div id="cartDrawerFoot" class="cart-drawer-foot"></div>
+  </div>
   <nav class="mobile-nav" id="mobileNav" aria-label="Mobile" aria-hidden="true">
     <div class="mobile-nav-head">
       <span class="logo small">SIESTA<span class="logo-dot">.</span></span>

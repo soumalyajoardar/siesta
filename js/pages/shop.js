@@ -47,14 +47,16 @@ export function cardHTML(p, i = 0) {
         ${off > 0 ? `<span class="badge sale">−${off}%</span>` : ""}
         ${p.isNew ? `<span class="badge new">New</span>` : ""}
       </div>
-      <button class="wish-btn" data-wish="${p.id}" aria-pressed="${wished}" aria-label="${wished ? "Remove" : "Add"} ${esc(p.name)} ${wished ? "from" : "to"} wishlist">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="${wished ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 20.5C7 16.5 3.5 13.3 3.5 9.5 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.5 0 3.8-3.5 7-8.5 11Z"/></svg>
-      </button>
       <button class="quick-view" data-quick="${p.id}">Quick view</button>
     </div>
     <div class="p-body">
       <span class="p-cat">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
-      <a class="p-name" href="/product/${p.id}">${esc(p.name)}</a>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <a class="p-name" href="/product/${p.id}">${esc(p.name)}</a>
+        <button class="wish-btn wish-inline" data-wish="${p.id}" aria-pressed="${wished}" aria-label="${wished ? "Remove" : "Add"} ${esc(p.name)} ${wished ? "from" : "to"} wishlist" style="position:static; width:26px; height:26px; border:none; background:transparent; padding:0; flex-shrink:0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="${wished ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 20.5C7 16.5 3.5 13.3 3.5 9.5 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.5 0 3.8-3.5 7-8.5 11Z"/></svg>
+        </button>
+      </div>
       <span class="p-meta">${esc(p.colors.map((c) => c.name).join(" / "))} · ${esc(p.sizes.slice(0, 4).join(", "))}${p.sizes.length > 4 ? "+" : ""}</span>
       <div class="p-price"><span class="price">${inr(p.price)}</span>${p.mrp > p.price ? `<span class="mrp">${inr(p.mrp)}</span><span class="off">${off}% off</span>` : ""}</div>
       <span class="stock-note ${stockCls}">${stockTxt}</span>
@@ -87,7 +89,8 @@ export function bindCards(root) {
     const size = p.sizes[Math.floor(p.sizes.length / 2)];
     try {
       addToCart(p.id, size, p.colors[0].name, 1);
-      flyToCart(b);
+      if (window.openCartDrawer) window.openCartDrawer();
+      else flyToCart(b);
       document.dispatchEvent(new CustomEvent("siesta:counts"));
     } catch (err) { toast(err.message, "error"); }
   }));
@@ -111,7 +114,8 @@ export function quickView(id) {
   el.querySelector("[data-qadd]")?.addEventListener("click", (e) => {
     try {
       addToCart(p.id, p.sizes[Math.floor(p.sizes.length / 2)], p.colors[0].name, 1);
-      flyToCart(e.currentTarget);
+      if (window.openCartDrawer) window.openCartDrawer();
+      else flyToCart(e.currentTarget);
       document.getElementById("modalRoot").innerHTML = "";
       document.dispatchEvent(new CustomEvent("siesta:counts"));
     } catch (err) { toast(err.message, "error"); }
@@ -521,14 +525,28 @@ export function ProductPage(id) {
     const needSize = () => { if (!size) { root.querySelector("#sizeErr").textContent = "Please choose a size."; root.querySelector("[data-size]")?.focus(); return true; } return false; };
     root.querySelector("#addBtn").onclick = (e) => {
       if (needSize()) return;
-      try { addToCart(p.id, size, color, qty); flyToCart(e.currentTarget); document.dispatchEvent(new CustomEvent("siesta:counts")); }
-      catch (err) { toast(err.message, "error"); }
+      try {
+        addToCart(p.id, size, color, qty);
+        if (window.openCartDrawer) window.openCartDrawer();
+        else flyToCart(e.currentTarget);
+        document.dispatchEvent(new CustomEvent("siesta:counts"));
+      } catch (err) { toast(err.message, "error"); }
     };
     root.querySelector("#buyBtn").onclick = () => {
       if (needSize()) return;
       try { addToCart(p.id, size, color, qty); document.dispatchEvent(new CustomEvent("siesta:counts")); window.navigate("/checkout"); }
       catch (err) { toast(err.message, "error"); }
     };
+    
+    // Sticky PDP Bar
+    const stickyBar = root.querySelector("#stickyPdpBar");
+    if (stickyBar) {
+      const observer = new IntersectionObserver((entries) => {
+        stickyBar.hidden = entries[0].isIntersecting;
+      }, { threshold: 0 });
+      observer.observe(root.querySelector("#addBtn"));
+      root.querySelector("#stickyAddBtn").onclick = () => root.querySelector("#addBtn").click();
+    }
     root.querySelector("#sizeGuideBtn").onclick = () => openModal("Size guide", `<table class="spec-table"><tr><th>Size</th><th>Chest (in)</th><th>Waist (in)</th></tr>${[["XS", "34", "28"], ["S", "36", "30"], ["M", "38", "32"], ["L", "40", "34"], ["XL", "42", "36"], ["XXL", "44", "38"]].map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</table><p class="muted" style="font-size:.85rem">Between sizes? We recommend sizing up for relaxed fits and down for tailored fits.</p>`);
     const gMain = root.querySelector("#gMain");
     const openLightbox = () => {
@@ -631,6 +649,15 @@ export function ProductPage(id) {
         <div class="acc"><button class="acc-head" aria-expanded="false">Shipping & returns <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>Ships within 24 hours. Free shipping over ₹1,499. 7-day returns on unworn items with tags. See <a href="/shipping">Shipping</a> and <a href="/returns">Returns</a>.</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Specifications <span aria-hidden="true">+</span></button><div class="acc-body" hidden><table class="spec-table"><tr><th>SKU</th><td>${esc(p.sku)}</td></tr><tr><th>Category</th><td>${esc(catLabel(p.category))}</td></tr><tr><th>Gender</th><td>${esc(p.gender)}</td></tr><tr><th>Fit</th><td>As described above</td></tr></table></div></div>
         <div class="acc"><button class="acc-head" id="pdpRevHead" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" id="pdpRevBody" hidden><p class="muted">Loading reviews…</p></div></div>
+      </div>
+    </div>
+    <div class="sticky-pdp-bar" id="stickyPdpBar" hidden>
+      <div style="display:flex; justify-content:space-between; align-items:center; width:100%; gap:1rem;">
+        <div style="flex:1; min-width:0">
+          <p style="margin:0; font-size:0.9rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.name)}</p>
+          <p style="margin:0; font-size:0.8rem; color:var(--muted)">${inr(p.price)}</p>
+        </div>
+        <button class="btn btn-dark btn-sm" id="stickyAddBtn" style="flex-shrink:0" ${!inStock(p) ? "disabled" : ""}>Add to Cart</button>
       </div>
     </div>
     <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>

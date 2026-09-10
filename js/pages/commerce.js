@@ -444,6 +444,76 @@ function trackHTML(o) {
   ${aside}</div>`;
 }
 
+export function renderCartDrawer() {
+  const t = S.totals();
+  const c = document.getElementById("cartDrawerContent");
+  const f = document.getElementById("cartDrawerFoot");
+  if (!c || !f) return;
+  if (t.lines.length === 0) {
+    c.innerHTML = `<div class="empty" style="text-align:center;margin:auto"><h3>Your cart is empty</h3><button class="btn btn-dark" onclick="closeCartDrawer(); window.navigate('/shop')">Shop Now</button></div>`;
+    f.innerHTML = "";
+    return;
+  }
+  const prog = Math.min(100, Math.round(((t.subtotal - t.discount) / STORE.freeShipThreshold) * 100));
+  c.innerHTML = `
+    ${t.shipping > 0 ? `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center">You're ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} away from <strong>Free Express Shipping</strong>.</p>` : `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center;color:var(--success)">You've unlocked <strong>Free Express Shipping!</strong></p>`}
+    <div style="background:var(--line);border-radius:99px;height:4px;margin-bottom:1.5rem;overflow:hidden"><div style="background:var(--forest);height:100%;width:${prog}%;transition:width 0.3s"></div></div>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+    ${t.lines.map((l) => `
+      <div style="display:flex;gap:1rem;padding-bottom:1rem;border-bottom:1px solid var(--line-2)">
+        <a href="/product/${l.id}" style="width:70px;flex-shrink:0" onclick="closeCartDrawer()">${productArt(l.product, 0, { w: 140 })}</a>
+        <div style="flex:1">
+          <h4 style="margin:0;font-size:0.95rem"><a href="/product/${l.id}" onclick="closeCartDrawer()">${esc(l.product.name)}</a></h4>
+          <p class="muted" style="margin:0.2rem 0;font-size:0.85rem">${esc(l.size)} · ${esc(l.color)}</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem">
+            <span class="mini-qty"><button onclick="SiestaCartUpdate(${l.idx}, ${l.qty-1})">−</button><output>${l.qty}</output><button onclick="SiestaCartUpdate(${l.idx}, ${l.qty+1})">+</button></span>
+            <div style="text-align:right"><strong>${inr(l.product.price * l.qty)}</strong></div>
+          </div>
+        </div>
+      </div>
+    `).join("")}
+    </div>
+  `;
+  f.innerHTML = `
+    <div style="display:flex;justify-content:space-between;margin-bottom:1rem"><strong>Subtotal</strong><strong>${inr(t.total)}</strong></div>
+    <a class="btn btn-dark btn-block" href="/checkout" onclick="closeCartDrawer()">Checkout</a>
+    <a class="btn btn-outline btn-block" href="/cart" onclick="closeCartDrawer()" style="margin-top:0.5rem">View full cart</a>
+  `;
+}
+window.SiestaCartUpdate = (idx, newQty) => {
+  if (newQty <= 0) {
+    S.removeLine(idx); toast("Removed from cart");
+  } else {
+    S.updateQty(idx, newQty);
+  }
+  document.dispatchEvent(new CustomEvent("siesta:counts"));
+  renderCartDrawer();
+  if (location.pathname === "/cart" || location.pathname === "/checkout") document.dispatchEvent(new CustomEvent("siesta:reroute"));
+};
+
+export function openCartDrawer() {
+  renderCartDrawer();
+  const d = document.getElementById("cartDrawer");
+  const s = document.getElementById("scrim");
+  if (d && s) {
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+    s.hidden = false;
+  }
+}
+window.openCartDrawer = openCartDrawer;
+window.closeCartDrawer = () => {
+  const d = document.getElementById("cartDrawer");
+  const s = document.getElementById("scrim");
+  if (d && s) {
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+    if (!document.getElementById("mobileNav")?.classList.contains("open") && !document.getElementById("filters")?.classList.contains("open")) {
+      s.hidden = true;
+    }
+  }
+};
+
 // ---------------- WISHLIST ----------------
 export function WishlistPage() {
   setTitle("Wishlist — Siesta", "Your saved Siesta styles.");

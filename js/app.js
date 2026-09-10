@@ -39,7 +39,7 @@ async function render() {
   document.body.classList.remove("maintenance");
   // Logged-out visitors get the main page for account-only routes —
   // no dead ends, no login walls on guessed URLs.
-  const PROTECTED = ["account", "orders", "checkout", "success"];
+  const PROTECTED = ["account", "orders"];
   if (PROTECTED.includes(segs[0]) && !(await S.currentUser())) {
     toast("Please log in to continue.");
     window.navigate("/", true);
@@ -150,6 +150,11 @@ document.addEventListener("click", e => {
   if (!a || !a.href || a.origin !== location.origin || a.hasAttribute("download") || a.hasAttribute("target")) return;
   if (a.pathname.startsWith("/admin") || a.pathname.startsWith("/api") || a.pathname.includes(".")) return;
   if (a.hash && a.pathname === location.pathname && a.search === location.search) return;
+  if (a.pathname === "/cart" && window.openCartDrawer) {
+    e.preventDefault();
+    window.openCartDrawer();
+    return;
+  }
   e.preventDefault();
   window.navigate(a.pathname + a.search);
 });
@@ -163,9 +168,11 @@ function openMobileNav() { nav.classList.add("open"); nav.setAttribute("aria-hid
 function closeMobileNav() { if (!nav.classList.contains("open")) { scrim.hidden = document.getElementById("filters")?.classList.contains("open") ? false : true; if (!document.getElementById("filters")?.classList.contains("open")) scrim.hidden = true; return; } nav.classList.remove("open"); nav.setAttribute("aria-hidden", "true"); scrim.hidden = true; menuBtn.setAttribute("aria-expanded", "false"); }
 menuBtn.onclick = openMobileNav;
 document.getElementById("menuClose").onclick = closeMobileNav;
-scrim.onclick = () => { closeMobileNav(); document.getElementById("filters")?.classList.remove("open"); scrim.hidden = true; };
+const cdc = document.getElementById("cartDrawerClose");
+if (cdc) cdc.onclick = () => window.closeCartDrawer && window.closeCartDrawer();
+scrim.onclick = () => { closeMobileNav(); document.getElementById("filters")?.classList.remove("open"); if (window.closeCartDrawer) window.closeCartDrawer(); scrim.hidden = true; };
 nav.querySelectorAll("a").forEach((a) => (a.onclick = closeMobileNav));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeMobileNav(); hideSuggest(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeMobileNav(); hideSuggest(); if (window.closeCartDrawer) window.closeCartDrawer(); } });
 
 // ---------- Search ----------
 const input = document.getElementById("globalSearch");
@@ -325,12 +332,9 @@ function hideSplash() {
     await Promise.race([
       (async () => {
         try { if (document.fonts) await document.fonts.ready; } catch {}
-        await windowLoaded();
-        await mediaSettled();
         await reviewsReady();
-        await mediaSettled(); // second pass: images added by late renders
       })(),
-      new Promise((res) => setTimeout(res, 12000)), // hard cap
+      new Promise((res) => setTimeout(res, 2500)), // hard cap
     ]);
   } finally {
     hideSplash();
