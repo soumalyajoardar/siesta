@@ -42,7 +42,7 @@ export function CartPage() {
     root.querySelectorAll("[data-inc]").forEach((b) => (b.onclick = () => { S.updateQty(Number(b.dataset.inc), S.getCart()[Number(b.dataset.inc)].qty + 1); rerender(); }));
     root.querySelectorAll("[data-dec]").forEach((b) => (b.onclick = () => { S.updateQty(Number(b.dataset.dec), S.getCart()[Number(b.dataset.dec)].qty - 1); rerender(); }));
     root.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => {
-      if (await confirmDialog("Remove item", "Remove this item from your cart?", "Remove")) { S.removeLine(Number(b.dataset.rm)); toast("Removed from cart."); rerender(); document.dispatchEvent(new CustomEvent("siesta:counts")); }
+      if (await confirmDialog("Remove item", "Remove this item from your cart?", "Remove")) { S.removeLine(Number(b.dataset.rm)); rerender(); document.dispatchEvent(new CustomEvent("siesta:counts")); }
     }));
     const form = root.querySelector("#couponForm");
     if (form) form.onsubmit = (e) => {
@@ -511,7 +511,7 @@ export function renderCartDrawer() {
 }
 window.SiestaCartUpdate = (idx, newQty) => {
   if (newQty <= 0) {
-    S.removeLine(idx); toast("Removed from cart");
+    S.removeLine(idx);
   } else {
     S.updateQty(idx, newQty);
   }
