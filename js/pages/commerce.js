@@ -248,7 +248,7 @@ function wireCheckout(t) {
                 S.clearCart(); S.removeCoupon(); resetCheckout();
                 document.dispatchEvent(new CustomEvent("siesta:counts"));
                 overlay.remove();
-                window.navigate("/success/") + serverOrder.orderNo;
+                window.navigate("/success/" + serverOrder.orderNo);
                 return;
               } catch (err) {
                 if (err.validation) { fail(err.message); return; }
@@ -270,7 +270,7 @@ function wireCheckout(t) {
           S.clearCart(); S.removeCoupon(); resetCheckout();
           document.dispatchEvent(new CustomEvent("siesta:counts"));
           overlay.remove();
-          window.navigate("/success/") + order.orderNo;
+          window.navigate("/success/" + order.orderNo);
         }, 600);
       }
     };
@@ -315,7 +315,7 @@ export function TrackPage(orderNo) {
   if (!orderNo) {
   setTimeout(() => {
     const form = document.getElementById("trackForm");
-    form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) window.navigate("/track/") + encodeURIComponent(v.toUpperCase()); });
+    form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) window.navigate("/track/" + encodeURIComponent(v.toUpperCase())); });
     // Merge server-side history so other devices' orders appear here too.
     serverMyOrders().then(async (list) => {
       const box = document.getElementById("trackRecent");

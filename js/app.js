@@ -12,10 +12,8 @@ const bootT0 = performance.now();
 window.__siestaBooted = true; // boot started — disables the no-JS failsafe trap
 
 function parsePath() {
-  const h = location.hash.slice(1) || "/";
-  const [pathPart, queryPart] = h.split("?");
-  const segs = pathPart.split("/").filter(Boolean);
-  return { segs, query: new URLSearchParams(queryPart || "") };
+  const segs = location.pathname.split("/").filter(Boolean);
+  return { segs, query: new URLSearchParams(location.search || "") };
 }
 
 async function render() {
@@ -44,7 +42,7 @@ async function render() {
   const PROTECTED = ["account", "orders", "checkout", "success"];
   if (PROTECTED.includes(segs[0]) && !(await S.currentUser())) {
     toast("Please log in to continue.");
-    window.navigate("#/".replace(/^#/, ""), true);
+    window.navigate("/", true);
     barDone();
     return;
   }
@@ -64,7 +62,7 @@ async function render() {
   else if (segs[0] === "account") html = AccountPage(segs[1] || "overview");
   else if (r === "orders") { window.navigate("/account/orders"); return; }
   else if (["about", "contact", "faq", "shipping", "returns", "privacy", "terms", "cookies"].includes(segs[0])) html = StaticPages[segs[0]]();
-  else { window.navigate("#/".replace(/^#/, ""), true); barDone(); return; }
+  else { window.navigate("/", true); barDone(); return; }
 
   app.innerHTML = html;
   observeReveals(app);
@@ -199,8 +197,8 @@ function pickSuggestion(i) {
   const s = currentList[i];
   hideSuggest();
   if (!s) return;
-  if (s.id) { S.pushSearch(input.value || s.label); window.navigate("/product/") + s.id; }
-  else if (s.cat) window.navigate("/shop?category=") + s.cat;
+  if (s.id) { S.pushSearch(input.value || s.label); window.navigate("/product/" + s.id); }
+  else if (s.cat) window.navigate("/shop?category=" + s.cat);
   else { goSearch(s.label); }
   input.value = "";
   clearBtn.hidden = true;
@@ -209,7 +207,7 @@ function goSearch(q) {
   q = q.trim();
   if (!q) return;
   S.pushSearch(q);
-  window.navigate("/shop?q=") + encodeURIComponent(q);
+  window.navigate("/shop?q=" + encodeURIComponent(q));
 }
 input.addEventListener("input", () => { clearBtn.hidden = !input.value; showSuggest(); });
 input.addEventListener("focus", showSuggest);

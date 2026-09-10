@@ -417,7 +417,7 @@ export function ShopPage(query) {
   const syncURL = (patch) => {
     const nq = new URLSearchParams({ ...Object.fromEntries(query.entries()), ...patch });
     Object.keys(patch).forEach((k) => { if (patch[k] === "" || patch[k] == null) nq.delete(k); });
-    window.navigate("/shop") + (nq.toString() ? "?" + nq.toString() : "");
+    window.navigate("/shop" + (nq.toString() ? "?" + nq.toString() : ""));
   };
 
   const GENDER_TITLES = { men: "Men", women: "Women", unisex: "Unisex" };

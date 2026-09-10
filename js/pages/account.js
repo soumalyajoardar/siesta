@@ -6,7 +6,7 @@ import { serverCancelOrder, serverMyOrders, mirrorOrder } from "../api.js";
 
 const needAuth = async () => {
   const u = await S.currentUser();
-  if (!u) { window.navigate("/login?next=") + encodeURIComponent(location.hash.slice(1)); return null; }
+  if (!u) { window.navigate("/login?next=" + encodeURIComponent(location.hash.slice(1))); return null; }
   return u;
 };
 
@@ -32,7 +32,7 @@ export function LoginPage(query) {
       try {
         await S.login(f.email.value, f.password.value, f.remember.checked);
         toast("Welcome back. You're logged in.");
-        window.navigate("#" + next.replace(/^#/, ""));
+        window.navigate(next.startsWith("/") ? next : "/" + next);
       } catch (err) { toast(err.message, "error"); }
       finally { btn.classList.remove("is-loading"); btn.disabled = false; }
     };
@@ -65,7 +65,7 @@ export function RegisterPage(query) {
       if (!f.terms.checked) { toast("Please accept the Terms to create an account.", "error"); return; }
       const btn = f.querySelector('[type="submit"]');
       btn.classList.add("is-loading"); btn.disabled = true;
-      try { await S.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, marketing: !!f.marketing.checked }); toast("Account created. Welcome to Siesta."); window.navigate("#" + next.replace(/^#/, "")); }
+      try { await S.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, marketing: !!f.marketing.checked }); toast("Account created. Welcome to Siesta."); window.navigate(next.startsWith("/") ? next : "/" + next); }
       catch (err) { toast(err.message, "error"); }
       finally { btn.classList.remove("is-loading"); btn.disabled = false; }
     };
