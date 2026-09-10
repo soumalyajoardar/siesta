@@ -263,7 +263,7 @@ app.get("/api/settings", async (req, res) => {
 app.post("/api/orders", async (req, res) => {
   try {
     if (await maintenanceOn()) return res.status(503).json(maintenanceBlock());
-    const { items, address, coupon } = req.body || {};
+    const { items, address, coupon, express } = req.body || {};
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Your cart is empty." });
     const products = await getProducts();
     const settings = await getSettings();
@@ -296,7 +296,9 @@ app.post("/api/orders", async (req, res) => {
       discount = Math.min(discount, subtotal);
       couponCode = c.code;
     }
-    const shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : settings.shipFlat;
+    let shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : settings.shipFlat;
+    if (express) shipping += 150; // Express delivery fee
+    
     // Round DOWN to the nearest ₹5 (fives table) — never adds, may leave unchanged.
     const preRound = subtotal - discount + shipping;
     const total = Math.floor(preRound / 5) * 5;
@@ -335,7 +337,8 @@ app.post("/api/orders", async (req, res) => {
       payment: "Cash on Delivery", coupon: couponCode,
       amounts: { subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total },
       status: "confirmed",
-      timeline: [{ stage: "confirmed", at: now, note: "Order placed · Cash on Delivery" }],
+      express: express ? { option: 'tomorrow' } : null,
+      timeline: [{ stage: "confirmed", at: now, note: "Order placed — Cash on Delivery" }],
     };
     await store.saveOrders([order, ...(await getOrders())]);
     res.status(201).json(order);

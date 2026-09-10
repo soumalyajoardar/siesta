@@ -102,6 +102,13 @@ export function resetCheckout() { coState = { step: 1, addrId: "", address: null
 
 export function CheckoutPage() {
   const t = S.totals();
+  if (coState.express) {
+    t.shipping = (t.shipping || 0) + 150;
+    const preRound = t.subtotal - t.discount + t.shipping;
+    const total = Math.floor(preRound / 5) * 5;
+    t.roundOff = total - preRound;
+    t.total = total;
+  }
   setTitle("Checkout — Siesta", "Delivery address, payment and order review.");
   if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Nothing to check out</h2><p class="muted">Your cart is empty.</p><a class="btn btn-dark" href="/shop">Browse Products</a></div></div>`;
   const addrs = S.getAddrs();
@@ -173,9 +180,13 @@ function wireCheckout(t) {
       };
     } else if (coState.step === 2) {
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Delivery method</h2>
-        <label class="pay-option selected"><input type="radio" checked/><span><strong>Standard delivery (3–6 days)</strong><br/><span class="muted">${t.shipping ? `₹${t.shipping} · free over ₹1,499` : "Free — your order qualifies for complimentary shipping"}</span></span></label>
-        <label class="pay-option disabled"><input type="radio" disabled/><span><strong>Express delivery</strong> <span class="coming">Coming soon</span><br/><span class="muted">1–2 day delivery is not available yet.</span></span></label>
+        <label class="pay-option ${!coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="standard" ${!coState.express ? 'checked' : ''}/><span><strong>Standard delivery (3–6 days)</strong><br/><span class="muted">${t.shipping ? `₹${t.shipping} · free over ₹1,499` : "Free — your order qualifies for complimentary shipping"}</span></span></label>
+        <label class="pay-option ${coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="express" ${coState.express ? 'checked' : ''}/><span><strong>Express delivery (1–2 days)</strong><br/><span class="muted">+₹150</span></span></label>
         <div style="display:flex;gap:.6rem;margin-top:.8rem"><button class="btn btn-ghost" id="back1">← Address</button><button class="btn btn-dark" id="toPay" style="flex:1">Continue to Payment</button></div></div>`;
+      main.querySelectorAll('input[name="delivery"]').forEach((r) => r.onchange = () => {
+        coState.express = (r.value === "express");
+        refresh();
+      });
       main.querySelector("#back1").onclick = () => { coState.step = 1; refresh(); };
       main.querySelector("#toPay").onclick = () => { coState.step = 3; refresh(); };
     } else if (coState.step === 3) {
@@ -189,6 +200,7 @@ function wireCheckout(t) {
     } else {
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Review & place order</h2>
         <p><strong>Deliver to:</strong> ${esc(coState.address.name)}, ${esc(coState.address.line1)}, ${esc(coState.address.city)} ${esc(coState.address.pin)} · ${esc(coState.address.phone)}</p>
+        <p><strong>Delivery:</strong> ${coState.express ? "Express delivery (1–2 days)" : "Standard delivery (3–6 days)"}</p>
         <p><strong>Payment:</strong> Cash on Delivery — ${inr(t.total)} due on delivery.</p>
         <label class="check-row" style="margin:.6rem 0"><input type="checkbox" id="agree"/> I agree to the <a href="/terms">Terms</a> and <a href="/returns">Return Policy</a>. <span class="req" style="color:var(--clay)">*</span></label>
         <div style="display:flex;gap:.6rem"><button class="btn btn-ghost" id="back3">← Payment</button><button class="btn btn-clay" id="placeBtn" style="flex:1">Place Order · ${inr(t.total)}</button></div>
@@ -196,13 +208,13 @@ function wireCheckout(t) {
       main.querySelector("#back3").onclick = () => { coState.step = 3; refresh(); };
       main.querySelector("#placeBtn").onclick = (e) => {
         if (!main.querySelector("#agree").checked) { toast("Please accept the Terms to place your order.", "error"); return; }
-        runOrderProcessing(e.currentTarget, t);
+        runOrderProcessing(e.currentTarget, t, coState.express);
       };
     }
   }
   function refresh() { document.dispatchEvent(new CustomEvent("siesta:reroute", { detail: { keep: true } })); }
 
-  function runOrderProcessing(btn, t) {
+  function runOrderProcessing(btn, t, express) {
     btn.classList.add("is-loading"); btn.disabled = true;
     const overlay = document.createElement("div");
     overlay.className = "process-overlay";
@@ -241,6 +253,7 @@ function wireCheckout(t) {
                   items: t.lines.map((l) => ({ id: l.id, size: l.size, color: l.color, qty: l.qty })),
                   address: coState.address,
                   coupon: t.coupon ? t.coupon.code : null,
+                  express: express
                 });
                 await mirrorOrder(serverOrder);
                 try { await loadCatalog(); } catch {}
@@ -456,7 +469,7 @@ export function renderCartDrawer() {
   }
   const prog = Math.min(100, Math.round(((t.subtotal - t.discount) / STORE.freeShipThreshold) * 100));
   c.innerHTML = `
-    ${t.shipping > 0 ? `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center">You're ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} away from <strong>Free Express Shipping</strong>.</p>` : `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center;color:var(--success)">You've unlocked <strong>Free Express Shipping!</strong></p>`}
+    ${t.shipping > 0 ? `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center">you are ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} away from unlocking free delivery</p>` : `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center;color:var(--success)">You've unlocked free delivery!</p>`}
     <div style="background:var(--line);border-radius:99px;height:4px;margin-bottom:1.5rem;overflow:hidden"><div style="background:var(--forest);height:100%;width:${prog}%;transition:width 0.3s"></div></div>
     <div style="display:flex;flex-direction:column;gap:1rem">
     ${t.lines.map((l) => `
