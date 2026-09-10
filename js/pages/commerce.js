@@ -103,7 +103,13 @@ export function resetCheckout() { coState = { step: 1, addrId: "", address: null
 export function CheckoutPage() {
   const t = S.totals();
   if (coState.express) {
-    t.shipping = (t.shipping || 0) + 150;
+    t.shipping = 150;
+    const preRound = t.subtotal - t.discount + t.shipping;
+    const total = Math.floor(preRound / 5) * 5;
+    t.roundOff = total - preRound;
+    t.total = total;
+  } else {
+    t.shipping = t.subtotal - t.discount >= STORE.freeShipThreshold ? 0 : 80;
     const preRound = t.subtotal - t.discount + t.shipping;
     const total = Math.floor(preRound / 5) * 5;
     t.roundOff = total - preRound;
@@ -139,21 +145,27 @@ function wireCheckout(t) {
     if (coState.step === 1) {
       const addrs = S.getAddrs();
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Delivery address</h2>
-        ${addrs.length ? `<div class="addr-grid" role="radiogroup" aria-label="Saved addresses">${addrs.map((a) => `<label class="addr-card ${a.isDefault ? "default" : ""}"><input type="radio" name="addr" value="${a.id}" ${coState.addrId === a.id || (!coState.addrId && a.isDefault) ? "checked" : ""}/> <strong>${esc(a.name)}</strong> ${a.isDefault ? '<span class="pill">Default</span>' : ""} <span class="muted" style="font-size:.8rem">${addrIcon(a.label)} ${addrLabel(a.label)}</span><br/><span class="muted">${esc(a.line1)}, ${esc(a.city)} ${esc(a.pin)}</span><br/><span class="muted">${esc(a.phone)}</span></label>`).join("")}</div>
-        <div style="display:flex;gap:.6rem;margin:.8rem 0"><button class="btn btn-dark btn-sm" id="useSaved">Deliver to This Address</button><button class="btn btn-ghost btn-sm" id="newAddrBtn">Add new address</button></div><div class="muted" style="font-size:.85rem">— or enter a new address below —</div>` : ""}
-        <form id="addrForm" class="form-grid" style="margin-top:.8rem" novalidate>
-          <div class="field"><label for="fName">Full name <span class="req">*</span></label><input id="fName" class="input" name="name" autocomplete="name"/><span class="err" role="alert"></span></div>
-          <div class="field"><label for="fPhone">Phone <span class="req">*</span></label><input id="fPhone" class="input" name="phone" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile"/><span class="err" role="alert"></span></div>
-          <div class="field full"><label for="fLine">Address (house no, street) <span class="req">*</span></label><input id="fLine" class="input" name="line1" autocomplete="street-address"/><span class="err" role="alert"></span></div>
-          <div class="field"><label for="fLand">Apartment / landmark</label><input id="fLand" class="input" name="land" autocomplete="address-line2"/><span class="err" role="alert"></span></div>
-          <div class="field"><span style="font-weight:600;font-size:.88rem" id="fLabelH">Save as</span><div style="display:flex;gap:1.2rem;margin-top:.3rem" role="radiogroup" aria-labelledby="fLabelH"><label class="check-row"><input type="radio" name="label" value="home" checked/> Home</label><label class="check-row"><input type="radio" name="label" value="work"/> Work</label></div><span class="err" role="alert"></span></div>
-          <div class="field"><label for="fCity">City <span class="req">*</span></label><input id="fCity" class="input" name="city" autocomplete="address-level2"/><span class="err" role="alert"></span></div>
-          <div class="field"><label for="fState">State <span class="req">*</span></label><select id="fState" class="select" name="state" autocomplete="address-level1"><option value="">Select state</option>${["Andhra Pradesh", "Delhi", "Gujarat", "Haryana", "Himachal Pradesh", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh", "Uttarakhand", "West Bengal"].map((s) => `<option>${s}</option>`).join("")}</select><span class="err" role="alert"></span></div>
-          <div class="field"><label for="fPin">PIN code <span class="req">*</span></label><input id="fPin" class="input" name="pin" inputmode="numeric" autocomplete="postal-code" placeholder="6 digits"/><span class="err" role="alert"></span></div>
-          <div class="field full"><label class="check-row"><input type="checkbox" id="fSave" checked/> Save this address to my account</label></div>
-          <div class="full"><button class="btn btn-dark btn-block" type="submit">Continue to Delivery</button></div>
+        ${addrs.length > 0 ? `<div class="addr-grid" style="margin-bottom:1.5rem">
+          ${addrs.map((a) => `<label class="addr-card ${coState.addrId === a.id ? "selected" : ""}"><input type="radio" name="addr" value="${esc(a.id)}" ${coState.addrId === a.id || (a.isDefault && !coState.addrId) ? "checked" : ""}/><div class="addr-card-body"><strong>${esc(a.name)}</strong><br/>${esc(a.line1)}<br/>${esc(a.city)}, ${esc(a.state)} ${esc(a.pin)}</div></label>`).join("")}
+        </div><div style="display:flex;gap:.6rem;margin-bottom:2rem"><button class="btn btn-outline" id="newAddrBtn">Add New Address</button><button class="btn btn-dark" id="useSaved">Deliver Here →</button></div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:1.5rem 0" />` : ""}
+        <form id="addrForm" novalidate>
+          <h3 style="margin-top:0">${addrs.length > 0 ? "Or enter a new address" : "Enter your address"}</h3>
+          <div class="field-row">
+            <div class="field"><label for="fName">Full Name <span class="req">*</span></label><input id="fName" class="input" name="name" autocomplete="name" autofocus/><span class="err" role="alert"></span></div>
+            <div class="field"><label for="fPhone">Mobile <span class="req">*</span></label><div class="input-phone"><span>+91</span><input id="fPhone" name="phone" type="tel" autocomplete="tel" placeholder="10 digits"/></div><span class="err" role="alert"></span></div>
+          </div>
+          <div class="field"><label for="fLine">House no, Building, Street <span class="req">*</span></label><input id="fLine" class="input" name="line1" autocomplete="address-line1"/><span class="err" role="alert"></span></div>
+          <div class="field"><label for="fLand">Landmark (Optional)</label><input id="fLand" class="input" name="land" autocomplete="address-line2"/></div>
+          <div class="field-row">
+            <div class="field full"><label>Address Type</label><div style="display:flex;gap:1rem;margin-top:.4rem"><label><input type="radio" name="label" value="home" checked/> Home</label><label><input type="radio" name="label" value="work"/> Work</label></div><span class="err" role="alert"></span></div>
+            <div class="field"><label for="fCity">City <span class="req">*</span></label><input id="fCity" class="input" name="city" autocomplete="address-level2"/><span class="err" role="alert"></span></div>
+            <div class="field"><label for="fState">State <span class="req">*</span></label><select id="fState" class="select" name="state" autocomplete="address-level1"><option value="">Select state</option>${["Andhra Pradesh", "Delhi", "Gujarat", "Haryana", "Himachal Pradesh", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh", "Uttarakhand", "West Bengal"].map((s) => `<option>${s}</option>`).join("")}</select><span class="err" role="alert"></span></div>
+            <div class="field"><label for="fPin">PIN code <span class="req">*</span></label><input id="fPin" class="input" name="pin" inputmode="numeric" autocomplete="postal-code" placeholder="6 digits"/><span class="err" role="alert"></span></div>
+            <div class="field full"><label class="check-row"><input type="checkbox" id="fSave" checked/> Save this address to my account</label></div>
+          </div>
+          <button type="submit" class="btn btn-dark" style="margin-top:.8rem">Continue to Delivery</button>
         </form></div>`;
-      const form = main.querySelector("#addrForm");
       main.querySelector("#newAddrBtn") && (main.querySelector("#newAddrBtn").onclick = () => form.querySelector("#fName").focus());
       main.querySelector("#useSaved") && (main.querySelector("#useSaved").onclick = () => {
         const sel = main.querySelector('input[name="addr"]:checked');
@@ -161,6 +173,7 @@ function wireCheckout(t) {
         coState.address = S.getAddrs().find((a) => a.id === sel.value);
         coState.addrId = sel.value; coState.step = 2; refresh();
       });
+      const form = main.querySelector("#addrForm");
       form.onsubmit = (e) => {
         e.preventDefault();
         const fd = new FormData(form);
@@ -180,8 +193,8 @@ function wireCheckout(t) {
       };
     } else if (coState.step === 2) {
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Delivery method</h2>
-        <label class="pay-option ${!coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="standard" ${!coState.express ? 'checked' : ''}/><span><strong>Standard delivery (3–6 days)</strong><br/><span class="muted">${t.shipping ? `₹${t.shipping} · free over ₹1,499` : "Free — your order qualifies for complimentary shipping"}</span></span></label>
-        <label class="pay-option ${coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="express" ${coState.express ? 'checked' : ''}/><span><strong>Express delivery (1–2 days)</strong><br/><span class="muted">+₹150</span></span></label>
+        <label class="pay-option ${!coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="standard" ${!coState.express ? 'checked' : ''}/><span><strong>Standard delivery (3–6 days)</strong><br/><span class="muted">${t.subtotal - t.discount >= STORE.freeShipThreshold ? "Free — your order qualifies for complimentary shipping" : "₹80"}</span></span></label>
+        <label class="pay-option ${coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="express" ${coState.express ? 'checked' : ''}/><span><strong>Express delivery (1–2 days)</strong><br/><span class="muted">₹150</span></span></label>
         <div style="display:flex;gap:.6rem;margin-top:.8rem"><button class="btn btn-ghost" id="back1">← Address</button><button class="btn btn-dark" id="toPay" style="flex:1">Continue to Payment</button></div></div>`;
       main.querySelectorAll('input[name="delivery"]').forEach((r) => r.onchange = () => {
         coState.express = (r.value === "express");
@@ -192,8 +205,8 @@ function wireCheckout(t) {
     } else if (coState.step === 3) {
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Payment method</h2>
         <p class="muted" style="font-size:.88rem">Only Cash on Delivery is available right now. Card, UPI, net-banking and wallets are coming soon — we never ask for card or banking details by form.</p>
-        <label class="pay-option selected"><input type="radio" name="pay" value="cod" checked/><span><strong>Cash on Delivery</strong> <span class="pill ok">Available</span><br/><span class="muted">Pay ${inr(t.total)} in cash or UPI when your order arrives.</span></span></label>
-        ${[["UPI (GPay / PhonePe / Paytm)", "Pay instantly via UPI apps"], ["Credit / Debit Card", "Visa, Mastercard, RuPay"], ["Net Banking", "All major Indian banks"], ["Wallets", "Popular mobile wallets"]].map(([h, s]) => `<label class="pay-option disabled"><input type="radio" disabled/><span><strong>${h}</strong> <span class="coming">Coming soon</span><br/><span class="muted">${s} — not available yet.</span></span></label>`).join("")}
+        <label class="pay-option selected"><input type="radio" name="pay" value="cod" checked/><span style="display:flex;gap:.75rem;align-items:center"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg> <div><strong>Cash on Delivery</strong><br/><span class="muted">Pay ${inr(t.total)} in cash or UPI when your order arrives.</span></div></span></label>
+        ${[[`<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`, "UPI (GPay / PhonePe / Paytm)", "Pay instantly via UPI apps"], [`<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`, "Credit / Debit Card", "Visa, Mastercard, RuPay"], [`<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11m16-11v11m-12-11v11m4-11v11m4-11v11"/></svg>`, "Net Banking", "All major Indian banks"], [`<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>`, "Wallets", "Popular mobile wallets"]].map(([icon, h, s]) => `<label class="pay-option disabled"><input type="radio" disabled/><span style="display:flex;gap:.75rem;align-items:center">${icon} <div><strong>${h}</strong> <span class="coming">Coming soon</span><br/><span class="muted">${s}</span></div></span></label>`).join("")}
         <div style="display:flex;gap:.6rem;margin-top:.8rem"><button class="btn btn-ghost" id="back2">← Delivery</button><button class="btn btn-dark" id="toReview" style="flex:1">Review Order</button></div></div>`;
       main.querySelector("#back2").onclick = () => { coState.step = 2; refresh(); };
       main.querySelector("#toReview").onclick = () => { coState.step = 4; refresh(); };
@@ -203,9 +216,12 @@ function wireCheckout(t) {
         <p><strong>Delivery:</strong> ${coState.express ? "Express delivery (1–2 days)" : "Standard delivery (3–6 days)"}</p>
         <p><strong>Payment:</strong> Cash on Delivery — ${inr(t.total)} due on delivery.</p>
         <label class="check-row" style="margin:.6rem 0"><input type="checkbox" id="agree"/> I agree to the <a href="/terms">Terms</a> and <a href="/returns">Return Policy</a>. <span class="req" style="color:var(--clay)">*</span></label>
-        <div style="display:flex;gap:.6rem"><button class="btn btn-ghost" id="back3">← Payment</button><button class="btn btn-clay" id="placeBtn" style="flex:1">Place Order · ${inr(t.total)}</button></div>
+        <div style="display:flex;gap:.6rem"><button class="btn btn-ghost" id="back3">← Payment</button><button class="btn btn-clay" id="placeBtn" style="flex:1" disabled>Place Order · ${inr(t.total)}</button></div>
         <p class="muted" style="font-size:.82rem">No advance payment is taken. COD orders can be cancelled before shipping from My Orders.</p></div>`;
       main.querySelector("#back3").onclick = () => { coState.step = 3; refresh(); };
+      main.querySelector("#agree").onchange = (e) => {
+        main.querySelector("#placeBtn").disabled = !e.target.checked;
+      };
       main.querySelector("#placeBtn").onclick = (e) => {
         if (!main.querySelector("#agree").checked) { toast("Please accept the Terms to place your order.", "error"); return; }
         runOrderProcessing(e.currentTarget, t, coState.express);
@@ -469,7 +485,7 @@ export function renderCartDrawer() {
   }
   const prog = Math.min(100, Math.round(((t.subtotal - t.discount) / STORE.freeShipThreshold) * 100));
   c.innerHTML = `
-    ${t.shipping > 0 ? `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center">you are ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} away from unlocking free delivery</p>` : `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center;color:var(--success)">You've unlocked free delivery!</p>`}
+    ${t.shipping > 0 ? `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center">You are ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} away from unlocking free delivery</p>` : `<p style="font-size:0.85rem;margin:0 0 1rem;text-align:center;color:var(--success)">You've unlocked free delivery!</p>`}
     <div style="background:var(--line);border-radius:99px;height:4px;margin-bottom:1.5rem;overflow:hidden"><div style="background:var(--forest);height:100%;width:${prog}%;transition:width 0.3s"></div></div>
     <div style="display:flex;flex-direction:column;gap:1rem">
     ${t.lines.map((l) => `

@@ -296,8 +296,8 @@ app.post("/api/orders", async (req, res) => {
       discount = Math.min(discount, subtotal);
       couponCode = c.code;
     }
-    let shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : settings.shipFlat;
-    if (express) shipping += 150; // Express delivery fee
+    let shipping = subtotal - discount >= settings.freeShipThreshold ? 0 : 80;
+    if (express) shipping = 150; // Express delivery is flat 150
     
     // Round DOWN to the nearest ₹5 (fives table) — never adds, may leave unchanged.
     const preRound = subtotal - discount + shipping;
