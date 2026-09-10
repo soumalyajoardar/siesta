@@ -129,7 +129,7 @@ export function updateCounts() {
     S.currentUser().then((u) => {
       const el = document.getElementById("accountBtn");
       if (!el) return;
-      el.setAttribute("href", u ? "#/account" : "#/login");
+      el.setAttribute("href", u ? "/account" : "/login");
       el.setAttribute("aria-label", u ? "My account" : "Log in to your account");
     }).catch(() => {});
   }
@@ -143,11 +143,15 @@ window.navigate = (path, replace = false) => {
   render();
 };
 document.addEventListener("click", e => {
+  // Let the browser handle new-tab/middle clicks, modifier clicks, downloads,
+  // external links, and same-page anchors (e.g. skip links) natively.
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const a = e.target.closest("a");
-  if (a && a.href && a.origin === location.origin && !a.hasAttribute("download") && !a.hasAttribute("target") && !a.pathname.startsWith("/admin") && !a.pathname.startsWith("/api") && !a.pathname.includes(".")) {
-    e.preventDefault();
-    window.navigate(a.pathname + a.search);
-  }
+  if (!a || !a.href || a.origin !== location.origin || a.hasAttribute("download") || a.hasAttribute("target")) return;
+  if (a.pathname.startsWith("/admin") || a.pathname.startsWith("/api") || a.pathname.includes(".")) return;
+  if (a.hash && a.pathname === location.pathname && a.search === location.search) return;
+  e.preventDefault();
+  window.navigate(a.pathname + a.search);
 });
 S.subscribe(updateCounts);
 
@@ -300,8 +304,20 @@ function hideSplash() {
 
 (async () => {
   try {
+    // Peek at maintenance first: normal visits get an instant splash lift +
+    // skeleton paint, but maintenance mode keeps the splash until its page
+    // is painted (no flash of the store).
+    let maintOn = false;
+    try {
+      const s = await loadSettings();
+      maintOn = Boolean(s && s.maintenance && s.maintenance.enabled);
+    } catch {}
+    if (!maintOn) hideSplash();
+    window.__catalogLoading = true;
+    render(); // paint skeleton immediately
     await Promise.allSettled([loadCatalog(), loadCoupons(), loadEvents(), loadSettings()]);
-    await render(); // awaited so the splash never lifts before the page (or maintenance) is painted
+    window.__catalogLoading = false;
+    await render(); // paint real data
     updateCounts();
     await Promise.race([
       (async () => {
@@ -312,7 +328,7 @@ function hideSplash() {
       new Promise((res) => setTimeout(res, 12000)), // hard cap
     ]);
   } finally {
-    hideSplash();
+    hideSplash(); // fallback
   }
 })();
 

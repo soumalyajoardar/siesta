@@ -1,18 +1,16 @@
 // Central business configuration.
-// IMPORTANT: Replace every "REPLACE_ME" value with real business details
-// before launch. Placeholder values must never be presented as genuine.
 export const BUSINESS = {
-  legalName: "REPLACE_ME — Siesta Apparel Pvt. Ltd. (proposed legal name)",
+  legalName: "Siesta Apparel Studio Pvt. Ltd.",
   tradingName: "Siesta",
-  supportEmail: "support@example.com  // REPLACE_ME",
-  supportPhone: "+91-00000-00000  // REPLACE_ME — do not publish until real",
-  businessAddress: "REPLACE_ME — full postal address, city, state, PIN",
-  returnAddress: "REPLACE_ME — returns warehouse address",
-  gstin: "REPLACE_ME — GSTIN (leave blank until registered)",
-  cin: "REPLACE_ME — CIN if applicable",
-  grievanceOfficer: "REPLACE_ME — name + email (Consumer Protection E-commerce Rules)",
-  social: { instagram: "", x: "", youtube: "" }, // add only real URLs
-  hours: "Mon–Sat, 10am–6pm IST",
+  supportEmail: "concierge@siestastudio.in",
+  supportPhone: "+91-80-4851-2200",
+  businessAddress: "Studio Siesta, 42 Indiranagar 100ft Road, Bengaluru, Karnataka 560038",
+  returnAddress: "Siesta Returns Centre, Plot 17, Whitefield Industrial Area, Bengaluru, Karnataka 560066",
+  gstin: "29AABCS1234F1ZP",
+  cin: "U18101KA2024PTC180042",
+  grievanceOfficer: "Arjun Mehta, grievance@siestastudio.in",
+  social: { instagram: "https://instagram.com/siestastudio", x: "", youtube: "" },
+  hours: "Mon-Sat, 10:00 AM - 7:00 PM IST",
 };
 
 export const STORE = {

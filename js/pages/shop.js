@@ -34,6 +34,7 @@ export function eventSection() {
 }
 
 export function cardHTML(p, i = 0) {
+  if (!p || window.__catalogLoading) return `<article class="p-card skel" style="height: 400px"></article>`;
   const off = discountPct(p);
   const wished = getWish().includes(p.id);
   const stockCls = !inStock(p) ? "out" : lowStock(p) ? "low" : "in";
@@ -232,11 +233,11 @@ function fillHomeReviews(root) {
 }
 export function HomePage() {
   setTitle("Siesta — Modern Essentials & Streetwear", "Premium everyday fashion: tees, shirts, jackets, hoodies, denim and more.");
-  const ALL = catalog();
-  const newArr = [...ALL].sort((a, b) => b.added.localeCompare(a.added)).slice(0, 8);
-  const trend = [...ALL].sort((a, b) => b.popularity - a.popularity).slice(0, 8);
-  const best = ALL.filter((p) => p.bestseller);
-  const sale = ALL.filter((p) => discountPct(p) >= 25).slice(0, 4);
+  const ALL = window.__catalogLoading ? Array.from({length: 8}) : catalog();
+  const newArr = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].sort((a, b) => b.added.localeCompare(a.added)).slice(0, 8);
+  const trend = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].sort((a, b) => b.popularity - a.popularity).slice(0, 8);
+  const best = window.__catalogLoading ? ALL.slice(0, 4) : ALL.filter((p) => p.bestseller);
+  const sale = window.__catalogLoading ? ALL.slice(0, 4) : ALL.filter((p) => discountPct(p) >= 25).slice(0, 4);
   const hero = siteHero();
   const HERO_DEFAULT = {
     eyebrow: "New Season · Autumn–Winter 2026",
@@ -393,8 +394,8 @@ export function ShopPage(query) {
     page: Number(query.get("page") || 1),
     q,
   };
-  let list = [...catalog()];
-  if (state.q) {
+  let list = window.__catalogLoading ? Array.from({length: PAGE_SIZE}) : [...catalog()];
+  if (state.q && !window.__catalogLoading) {
     const needle = state.q.toLowerCase();
     list = list.filter((p) => [p.name, p.category, p.gender, p.desc, p.material, ...p.colors.map((c) => c.name)].join(" ").toLowerCase().includes(needle));
   }
@@ -454,7 +455,7 @@ export function ShopPage(query) {
     <p>${state.q ? "Search across names, categories and fabrics." : "Filter by size, price and availability. Prices include taxes where applicable."}</p></div></div>
     <div class="plp-layout">
       <aside class="filters" id="filters" aria-label="Product filters">
-        <div style="display:flex;justify-content:space-between;align-items:center"><h2>Filters</h2><button class="link-btn" id="filterClose" aria-label="Close filters">✕</button></div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><h2>Filters</h2><button class="link-btn" id="filterClose" aria-label="Close filters"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
         <div class="filter-group"><h3>Category</h3>${CATEGORIES.map((c) => `<label class="check-row"><input type="checkbox" data-cat-f value="${c.id}" ${state.category === c.id ? "checked" : ""}/> ${esc(c.label)}</label>`).join("")}</div>
         <div class="filter-group"><h3>Gender</h3>${["men", "women", "unisex"].map((g) => `<label class="check-row"><input type="checkbox" data-gender-f value="${g}" ${state.gender === g ? "checked" : ""}/> ${g[0].toUpperCase() + g.slice(1)}</label>`).join("")}</div>
         <div class="filter-group"><h3>Size</h3><div style="display:flex;flex-wrap:wrap;gap:.4rem">${allSizes.map((s) => `<label class="check-row" style="border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem"><input type="checkbox" data-size-f value="${s}" ${state.sizes.has(s) ? "checked" : ""}/> ${s}</label>`).join("")}</div></div>
@@ -490,7 +491,12 @@ export function ShopPage(query) {
 // ---------------- PDP ----------------
 export function ProductPage(id) {
   const p = productById(id);
-  if (!p) return `<div class="page"><div class="empty"><h2>Product not found</h2><p class="muted">It may have been moved. Try browsing the catalog.</p><a class="btn btn-dark" href="/shop">Back to Shop</a></div></div>`;
+  if (!p) {
+    if (window.__catalogLoading) {
+      return `<div class="page"><div class="skel" style="height:600px"></div></div>`;
+    }
+    return `<div class="page"><div class="empty"><h2>Product not found</h2><p class="muted">It may have been moved. Try browsing the catalog.</p><a class="btn btn-dark" href="/shop">Back to Shop</a></div></div>`;
+  }
   setTitle(`${p.name} — Siesta`, p.desc);
   pushRecent(id);
   const off = discountPct(p);
@@ -545,7 +551,7 @@ export function ProductPage(id) {
     const gMain = root.querySelector("#gMain");
     const openLightbox = () => {
       const lb = document.createElement("div");      lb.className = "lightbox";
-      lb.innerHTML = `${photos.length ? photoArt(p, cIdx, true) : productArt(p, cIdx)}<button class="btn btn-light btn-sm" aria-label="Close image viewer">Close ✕</button>`;
+      lb.innerHTML = `${photos.length ? photoArt(p, cIdx, true) : productArt(p, cIdx)}<button class="btn btn-light btn-sm" aria-label="Close image viewer">Close <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
       document.body.appendChild(lb);
       const close = () => { lb.remove(); gMain.focus(); };
       lb.querySelector("button").onclick = close;

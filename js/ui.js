@@ -10,9 +10,11 @@ export function imgVariant(url, w = 800, q = 70) {
     `?width=${w}&quality=${q}&format=webp` + (hash ? `#${hash}` : "");
 }
 // Star display (typographic, screen-reader labelled — never faked).
-export const stars = (n, label) => {
-  const full = Math.max(0, Math.min(5, Math.round(Number(n) || 0)));
-  return `<span class="stars" role="img" aria-label="${esc(label || `${full} out of 5 stars`)}">${"★".repeat(full)}${"☆".repeat(5 - full)}</span>`;
+export function stars(rating, label) {
+  const full = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  const svgStar = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+  const svgStarEmpty = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+  return `<span class="stars" role="img" aria-label="${esc(label || `${full} out of 5 stars`)}">${svgStar.repeat(full)}${svgStarEmpty.repeat(5 - full)}</span>`;
 };
 export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -22,7 +24,7 @@ export function toast(msg, type = "success", ms = 4200) {
   const el = document.createElement("div");
   el.className = `toast ${type}`;
   el.setAttribute("role", type === "error" ? "alert" : "status");
-  el.innerHTML = `<span>${esc(msg)}</span><button aria-label="Dismiss notification">✕</button>`;
+  el.innerHTML = `<span>${esc(msg)}</span><button aria-label="Dismiss notification"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
   const kill = () => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); };
   el.querySelector("button").onclick = kill;
   wrap.appendChild(el);
@@ -36,7 +38,7 @@ export function openModal(title, bodyHTML) {
   const scrim = document.createElement("div");
   scrim.className = "modal-scrim";
   scrim.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-    <div class="modal-head"><strong>${esc(title)}</strong><button class="icon-btn" data-close aria-label="Close dialog">✕</button></div>
+    <div class="modal-head"><strong>${esc(title)}</strong><button class="icon-btn" data-close aria-label="Close dialog"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
     <div class="modal-body">${bodyHTML}</div></div>`;
   root.appendChild(scrim);
   const modal = scrim.querySelector(".modal");
@@ -77,7 +79,7 @@ export function openReviewModal(orderNo, item) {
   let rating = 0;
   const { el, close } = openModal(`Review: ${esc(item.name)}`, `
     <div class="stars-input" role="radiogroup" aria-label="Choose a star rating">
-      ${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" role="radio" aria-checked="false" aria-label="${n} star${n > 1 ? "s" : ""}">★</button>`).join("")}
+      ${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" role="radio" aria-checked="false" aria-label="${n} star${n > 1 ? "s" : ""}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></button>`).join("")}
     </div>
     <p class="err" id="rvStarErr" role="alert"></p>
     <div class="field"><label for="rvTitle">Headline (optional)</label><input id="rvTitle" class="input" maxlength="120" placeholder="Sums it up in a line" /></div>

@@ -101,7 +101,6 @@ let coState = { step: 1, addrId: "", address: null, saveAddr: true };
 export function resetCheckout() { coState = { step: 1, addrId: "", address: null, saveAddr: true }; }
 
 export function CheckoutPage() {
-  // NOTE: logged-out visitors never reach here — the router sends them home.
   const t = S.totals();
   setTitle("Checkout — Siesta", "Delivery address, payment and order review.");
   if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Nothing to check out</h2><p class="muted">Your cart is empty.</p><a class="btn btn-dark" href="/shop">Browse Products</a></div></div>`;
@@ -430,7 +429,11 @@ function trackHTML(o) {
       </div>
       <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">⧉</span></button>
     </div>
-    <div class="eta-panel"><span aria-hidden="true">▣</span><div><strong>${isExpress ? `Express delivery · arriving ${esc(o.express.option)}` : `Estimated delivery · ${esc(o.eta)}`}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>
+    ${o.status === "delivered" ? 
+      `<div class="eta-panel"><span aria-hidden="true">✔</span><div><strong>Delivered successfully</strong><br /><span class="muted" style="font-size:.84rem">Order complete</span></div></div>` 
+      : 
+      `<div class="eta-panel"><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><div><strong>${isExpress ? `Express delivery · ${esc(o.express.option)}` : `Estimated delivery · ${esc(o.eta)}`}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>`
+    }
     <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
     <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
     ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review Product</button>`).join("")}</div></div>` : ""}
