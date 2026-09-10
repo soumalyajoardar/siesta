@@ -53,8 +53,8 @@ export function cardHTML(p, i = 0) {
       <span class="p-cat">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
       <div style="display:flex; justify-content:space-between; align-items:flex-start;">
         <a class="p-name" href="/product/${p.id}">${esc(p.name)}</a>
-        <button class="wish-btn wish-inline" data-wish="${p.id}" aria-pressed="${wished}" aria-label="${wished ? "Remove" : "Add"} ${esc(p.name)} ${wished ? "from" : "to"} wishlist" style="position:static; width:26px; height:26px; border:none; background:transparent; padding:0; flex-shrink:0;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="${wished ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 20.5C7 16.5 3.5 13.3 3.5 9.5 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.5 0 3.8-3.5 7-8.5 11Z"/></svg>
+        <button class="wish-btn wish-inline" data-wish="${p.id}" aria-pressed="${wished}" aria-label="${wished ? "Remove" : "Add"} ${esc(p.name)} ${wished ? "from" : "to"} wishlist" style="position:static; width:26px; height:26px; border:none; background:transparent; padding:0; flex-shrink:0; color:var(--ink);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="${wished ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><path d="M12 20.5C7 16.5 3.5 13.3 3.5 9.5 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.5 0 3.8-3.5 7-8.5 11Z"/></svg>
         </button>
       </div>
       <span class="p-meta">${esc(p.colors.map((c) => c.name).join(" / "))} · ${esc(p.sizes.slice(0, 4).join(", "))}${p.sizes.length > 4 ? "+" : ""}</span>
