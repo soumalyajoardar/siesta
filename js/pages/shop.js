@@ -40,7 +40,7 @@ export function cardHTML(p, i = 0) {
   const stockTxt = !inStock(p) ? "Out of stock" : lowStock(p) ? `Only ${p.stock} left` : "In stock";
   return `<article class="p-card reveal" style="transition-delay:${Math.min(i * 40, 320)}ms">
     <div class="p-media">
-      <a href="#/product/${p.id}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p, 0, { loading: i < 4 ? "eager" : "lazy" })}</a>
+      <a href="/product/${p.id}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p, 0, { loading: i < 4 ? "eager" : "lazy" })}</a>
       ${hasAltVisual(p) ? `<span class="p-alt" aria-hidden="true">${productArt(p, 1)}</span>` : ""}
       <div class="p-badges">
         ${off > 0 ? `<span class="badge sale">−${off}%</span>` : ""}
@@ -53,7 +53,7 @@ export function cardHTML(p, i = 0) {
     </div>
     <div class="p-body">
       <span class="p-cat">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
-      <a class="p-name" href="#/product/${p.id}">${esc(p.name)}</a>
+      <a class="p-name" href="/product/${p.id}">${esc(p.name)}</a>
       <span class="p-meta">${esc(p.colors.map((c) => c.name).join(" / "))} · ${esc(p.sizes.slice(0, 4).join(", "))}${p.sizes.length > 4 ? "+" : ""}</span>
       <div class="p-price"><span class="price">${inr(p.price)}</span>${p.mrp > p.price ? `<span class="mrp">${inr(p.mrp)}</span><span class="off">${off}% off</span>` : ""}</div>
       <span class="stock-note ${stockCls}">${stockTxt}</span>
@@ -103,7 +103,7 @@ export function quickView(id) {
     <p style="margin:.4rem 0"><strong>${inr(p.price)}</strong> ${p.mrp > p.price ? `<s class="muted">${inr(p.mrp)}</s> <span class="off">${off}% off</span>` : ""}</p>
     <p class="muted" style="font-size:.88rem">${esc(p.desc)}</p>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem">
-      <a class="btn btn-dark btn-sm" href="#/product/${p.id}" data-nav-view>View Details</a>
+      <a class="btn btn-dark btn-sm" href="/product/${p.id}" data-nav-view>View Details</a>
       <button class="btn btn-outline btn-sm" data-qadd ${!inStock(p) ? "disabled" : ""}>Add to Cart</button>
     </div></div></div>`);
   el.querySelector("[data-nav-view]")?.addEventListener("click", () => document.getElementById("modalRoot").innerHTML = "");
@@ -225,7 +225,7 @@ function fillHomeReviews(root) {
     if (!box.isConnected) return;
     if (!d || !d.count) { box.closest("section").hidden = true; return; }
     box.innerHTML = `<div class="rev-grid">
-      <div class="stat"><span class="muted">Average rating</span><strong>${stars(d.avg)} ${d.avg}</strong><a class="link-btn" href="#/shop?filter=bestsellers">${d.count} verified reviews →</a></div>
+      <div class="stat"><span class="muted">Average rating</span><strong>${stars(d.avg)} ${d.avg}</strong><a class="link-btn" href="/shop?filter=bestsellers">${d.count} verified reviews →</a></div>
       ${d.reviews.map((r) => `<div class="stat"><span class="muted">${esc(r.productName || "Verified purchase")}</span><strong style="font-size:1rem">${stars(r.rating)} ${esc(r.title || "")}</strong><p class="muted" style="font-size:.84rem;margin:.3rem 0">“${esc(r.text.slice(0, 90))}${r.text.length > 90 ? "…" : ""}”</p><span class="verified">Verified Purchase</span></div>`).join("")}
     </div>`;
   }).catch(() => { if (box.isConnected) box.closest("section").hidden = true; });
@@ -267,9 +267,9 @@ export function HomePage() {
           <h1>${esc(b.title)}</h1>
           <p>${esc(b.message)}</p>
           <div class="hero-cta">
-            <a class="btn btn-dark" href="#/shop?gender=men">Shop Men</a>
-            <a class="btn btn-light" href="#/shop?gender=women">Shop Women</a>
-            <a class="btn btn-light" href="#/shop?gender=unisex">Shop Unisex</a>
+            <a class="btn btn-dark" href="/shop?gender=men">Shop Men</a>
+            <a class="btn btn-light" href="/shop?gender=women">Shop Women</a>
+            <a class="btn btn-light" href="/shop?gender=unisex">Shop Unisex</a>
           </div>
           <div class="hero-meta">
             <div><strong>COD available</strong>Pay at your door</div>
@@ -315,8 +315,8 @@ export function HomePage() {
     </div></div>
 
     <section class="section" aria-labelledby="catH">
-      <div class="section-head"><div><span class="eyebrow">Departments</span><h2 id="catH">Shop by category</h2></div><a class="link-btn" href="#/shop">View everything →</a></div>
-      <div class="cat-grid">${CATEGORIES.map((c) => `<a class="cat-card reveal" href="#/shop?category=${c.id}">${catArt(c.id, siteCatImage(c.id))}<span class="cat-label"><span><strong>${esc(c.label)}</strong><br/><span>${esc(c.blurb)}</span></span><span aria-hidden="true">→</span></span></a>`).join("")}</div>
+      <div class="section-head"><div><span class="eyebrow">Departments</span><h2 id="catH">Shop by category</h2></div><a class="link-btn" href="/shop">View everything →</a></div>
+      <div class="cat-grid">${CATEGORIES.map((c) => `<a class="cat-card reveal" href="/shop?category=${c.id}">${catArt(c.id, siteCatImage(c.id))}<span class="cat-label"><span><strong>${esc(c.label)}</strong><br/><span>${esc(c.blurb)}</span></span><span aria-hidden="true">→</span></span></a>`).join("")}</div>
     </section>
 
     <section class="section" aria-labelledby="genH">
@@ -326,13 +326,13 @@ export function HomePage() {
           const n = ALL.filter((p) => p.gender === g).length;
           const photo = siteCollectionImage(g);
           const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onerror="this.remove()" />` : ""}</span>`;
-          return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="#/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
+          return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
         }).join("")}
       </div>
     </section>
 
     <section class="section" aria-labelledby="newH">
-      <div class="section-head"><div><span class="eyebrow">Just landed</span><h2 id="newH">New arrivals</h2></div><a class="link-btn" href="#/shop?filter=new">Shop all new →</a></div>
+      <div class="section-head"><div><span class="eyebrow">Just landed</span><h2 id="newH">New arrivals</h2></div><a class="link-btn" href="/shop?filter=new">Shop all new →</a></div>
       <div class="product-grid" data-grid>${newArr.map(cardHTML).join("")}</div>
     </section>
 
@@ -341,19 +341,19 @@ export function HomePage() {
         <span class="eyebrow" style="color:#CFC7B4">Limited time</span>
         <h2>The Layering Event — up to 35% off jackets & sweatshirts</h2>
         <p style="color:#CFC7B4">Utility shells, truckers and brushed fleece. Use code <strong style="color:#fff">SIESTA15</strong> on orders over ₹1,999 at checkout.</p>
-        <div class="hero-cta" style="margin-top:1.2rem"><a class="btn btn-clay" href="#/shop?filter=sale">Shop the Sale</a><a class="btn btn-light" href="#/shop?category=jackets">Explore Jackets</a></div>
+        <div class="hero-cta" style="margin-top:1.2rem"><a class="btn btn-clay" href="/shop?filter=sale">Shop the Sale</a><a class="btn btn-light" href="/shop?category=jackets">Explore Jackets</a></div>
       </div>
       <div class="promo-art" aria-hidden="true"><svg viewBox="0 0 500 320" style="width:100%;height:100%"><rect width="500" height="320" fill="none"/><g transform="translate(60,10) scale(.62)">${""}</g><text x="40" y="150" font-family="Georgia,serif" font-size="72" fill="#F3EFE6" letter-spacing="2">—35%</text><text x="42" y="185" font-family="system-ui" font-size="15" fill="#CFC7B4">on selected outerwear · ends soon</text><circle cx="400" cy="90" r="70" fill="none" stroke="#CFC7B4" stroke-width="1.5" stroke-dasharray="5 7"/><circle cx="400" cy="230" r="34" fill="#C96F4A"/></svg></div>
     </section>
 
     ${eventSection()}
     <section class="section" aria-labelledby="trendH">
-      <div class="section-head"><div><span class="eyebrow">Most viewed</span><h2 id="trendH">Trending now</h2></div><a class="link-btn" href="#/shop?sort=popularity">Shop popular →</a></div>
+      <div class="section-head"><div><span class="eyebrow">Most viewed</span><h2 id="trendH">Trending now</h2></div><a class="link-btn" href="/shop?sort=popularity">Shop popular →</a></div>
       <div class="product-grid" data-grid>${trend.map(cardHTML).join("")}</div>
     </section>
 
     <section class="section" aria-labelledby="bestH">
-      <div class="section-head"><div><span class="eyebrow">Customer favourites</span><h2 id="bestH">Best sellers</h2><p>Core styles our customers reorder — merchandised by our studio, not by paid placement.</p></div><a class="link-btn" href="#/shop?filter=bestsellers">Shop all →</a></div>
+      <div class="section-head"><div><span class="eyebrow">Customer favourites</span><h2 id="bestH">Best sellers</h2><p>Core styles our customers reorder — merchandised by our studio, not by paid placement.</p></div><a class="link-btn" href="/shop?filter=bestsellers">Shop all →</a></div>
       <div class="product-grid" data-grid>${best.map(cardHTML).join("")}</div>
     </section>
 
@@ -417,7 +417,7 @@ export function ShopPage(query) {
   const syncURL = (patch) => {
     const nq = new URLSearchParams({ ...Object.fromEntries(query.entries()), ...patch });
     Object.keys(patch).forEach((k) => { if (patch[k] === "" || patch[k] == null) nq.delete(k); });
-    location.hash = "#/shop" + (nq.toString() ? "?" + nq.toString() : "");
+    window.navigate("/shop") + (nq.toString() ? "?" + nq.toString() : "");
   };
 
   const GENDER_TITLES = { men: "Men", women: "Women", unisex: "Unisex" };
@@ -437,7 +437,7 @@ export function ShopPage(query) {
     root.querySelectorAll("[data-cat-f]").forEach((c) => (c.onchange = () => syncURL({ category: c.checked ? c.value : "", page: 1 })));
     root.querySelectorAll("[data-gender-f]").forEach((c) => (c.onchange = () => syncURL({ gender: c.checked ? c.value : "", page: 1 })));
     root.querySelector("#availSel").onchange = (e) => syncURL({ avail: e.target.value, page: 1 });
-    root.querySelector("#clearF").onclick = () => (location.hash = "#/shop");
+    root.querySelector("#clearF").onclick = () => (window.navigate("/shop"));
     root.querySelector("#filterFab").onclick = () => { root.querySelector("#filters").classList.add("open"); document.getElementById("scrim").hidden = false; };
     root.querySelector("#filterClose").onclick = closeFilters;
     const scrim = document.getElementById("scrim");
@@ -449,7 +449,7 @@ export function ShopPage(query) {
 
   const allSizes = ["XS", "S", "M", "L", "XL", "XXL", "26", "28", "30", "32", "34", "36"];
   return `<div class="page">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span aria-hidden="true">/</span><span aria-current="page">${esc(title)}</span></nav>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">${esc(title)}</span></nav>
     <div class="section-head" style="margin-top:0"><div><span class="eyebrow">${list.length} product${list.length === 1 ? "" : "s"}</span><h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">${esc(title)}</h2>
     <p>${state.q ? "Search across names, categories and fabrics." : "Filter by size, price and availability. Prices include taxes where applicable."}</p></div></div>
     <div class="plp-layout">
@@ -476,7 +476,7 @@ export function ShopPage(query) {
             </select>
           </div>
         </div>
-        ${slice.length === 0 ? `<div class="empty"><h2>No matches found</h2><p class="muted">Try a different keyword (“jacket”, “denim”, “hoodie”) or clear your filters.</p><div class="chips"><a class="chip" href="#/shop?category=jackets">Jackets</a><a class="chip" href="#/shop?category=jeans">Jeans</a><a class="chip" href="#/shop?category=hoodies">Hoodies</a><a class="chip" href="#/shop">Clear all</a></div></div>`
+        ${slice.length === 0 ? `<div class="empty"><h2>No matches found</h2><p class="muted">Try a different keyword (“jacket”, “denim”, “hoodie”) or clear your filters.</p><div class="chips"><a class="chip" href="/shop?category=jackets">Jackets</a><a class="chip" href="/shop?category=jeans">Jeans</a><a class="chip" href="/shop?category=hoodies">Hoodies</a><a class="chip" href="/shop">Clear all</a></div></div>`
         : `<div class="product-grid" data-plp-grid>${slice.map(cardHTML).join("")}</div>
         <div style="display:flex;gap:.5rem;justify-content:center;margin-top:1.4rem;flex-wrap:wrap" role="navigation" aria-label="Pagination">
           ${Array.from({ length: pages }).map((_, i) => `<button class="btn ${i + 1 === state.page ? "btn-dark" : "btn-light"} btn-sm" data-page="${i + 1}" ${i + 1 === state.page ? 'aria-current="page"' : ""}>${i + 1}</button>`).join("")}
@@ -490,7 +490,7 @@ export function ShopPage(query) {
 // ---------------- PDP ----------------
 export function ProductPage(id) {
   const p = productById(id);
-  if (!p) return `<div class="page"><div class="empty"><h2>Product not found</h2><p class="muted">It may have been moved. Try browsing the catalog.</p><a class="btn btn-dark" href="#/shop">Back to Shop</a></div></div>`;
+  if (!p) return `<div class="page"><div class="empty"><h2>Product not found</h2><p class="muted">It may have been moved. Try browsing the catalog.</p><a class="btn btn-dark" href="/shop">Back to Shop</a></div></div>`;
   setTitle(`${p.name} — Siesta`, p.desc);
   pushRecent(id);
   const off = discountPct(p);
@@ -538,7 +538,7 @@ export function ProductPage(id) {
     };
     root.querySelector("#buyBtn").onclick = () => {
       if (needSize()) return;
-      try { addToCart(p.id, size, color, qty); document.dispatchEvent(new CustomEvent("siesta:counts")); location.hash = "#/checkout"; }
+      try { addToCart(p.id, size, color, qty); document.dispatchEvent(new CustomEvent("siesta:counts")); window.navigate("/checkout"); }
       catch (err) { toast(err.message, "error"); }
     };
     root.querySelector("#sizeGuideBtn").onclick = () => openModal("Size guide", `<table class="spec-table"><tr><th>Size</th><th>Chest (in)</th><th>Waist (in)</th></tr>${[["XS", "34", "28"], ["S", "36", "30"], ["M", "38", "32"], ["L", "40", "34"], ["XL", "42", "36"], ["XXL", "44", "38"]].map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</table><p class="muted" style="font-size:.85rem">Between sizes? We recommend sizing up for relaxed fits and down for tailored fits.</p>`);
@@ -608,7 +608,7 @@ export function ProductPage(id) {
 
   const wished = getWish().includes(p.id);
   return `<div class="page">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><a href="#/shop">Shop</a><span>/</span><a href="#/shop?category=${p.category}">${esc(catLabel(p.category))}</a><span>/</span><span aria-current="page">${esc(p.name)}</span></nav>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/shop">Shop</a><span>/</span><a href="/shop?category=${p.category}">${esc(catLabel(p.category))}</a><span>/</span><span aria-current="page">${esc(p.name)}</span></nav>
     <div class="pdp">
       <div class="gallery">
         <div class="g-main" id="gMain" role="button" tabindex="0" aria-label="Open image viewer for ${esc(p.name)}"></div>
@@ -620,7 +620,7 @@ export function ProductPage(id) {
         <p class="muted" style="margin:0">SKU ${esc(p.sku)} · ${esc(p.material)}</p>
         <div id="pdpRatingLine" style="margin:.35rem 0 0;min-height:1.4em"></div>
         <div class="pdp-price"><span class="price">${inr(p.price)}</span>${off ? `<s class="muted">${inr(p.mrp)}</s><span class="off">${off}% off</span>` : ""}</div>
-        <p class="muted" style="font-size:.86rem">Inclusive of all taxes. <a href="#/shipping">Shipping info</a></p>
+        <p class="muted" style="font-size:.86rem">Inclusive of all taxes. <a href="/shipping">Shipping info</a></p>
         <p style="font-size:.9rem;color:var(--success);font-weight:700" role="status">${!inStock(p) ? `<span style="color:var(--danger)">Out of stock — restocking soon.</span>` : lowStock(p) ? `Only ${p.stock} left in stock — order soon.` : "In stock, ships within 24 hours."}</p>
         <p>${esc(p.desc)}</p>
         <div class="opt-label"><span>Size ${sizeRequiredNote(p)}</span><button class="link-btn" id="sizeGuideBtn">Size guide</button></div>
@@ -640,12 +640,12 @@ export function ProductPage(id) {
         <p class="muted" style="font-size:.86rem">Cash on Delivery available · Estimated delivery ${eta()} · 7-day easy returns</p>
         <div class="acc"><button class="acc-head" aria-expanded="true">Product details <span aria-hidden="true">−</span></button><div class="acc-body"><ul>${p.details.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Material & care <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p><strong>Material:</strong> ${esc(p.material)}</p><p><strong>Care:</strong> ${esc(p.care)}</p></div></div>
-        <div class="acc"><button class="acc-head" aria-expanded="false">Shipping & returns <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>Ships within 24 hours. Free shipping over ₹1,499. 7-day returns on unworn items with tags. See <a href="#/shipping">Shipping</a> and <a href="#/returns">Returns</a>.</p></div></div>
+        <div class="acc"><button class="acc-head" aria-expanded="false">Shipping & returns <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>Ships within 24 hours. Free shipping over ₹1,499. 7-day returns on unworn items with tags. See <a href="/shipping">Shipping</a> and <a href="/returns">Returns</a>.</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Specifications <span aria-hidden="true">+</span></button><div class="acc-body" hidden><table class="spec-table"><tr><th>SKU</th><td>${esc(p.sku)}</td></tr><tr><th>Category</th><td>${esc(catLabel(p.category))}</td></tr><tr><th>Gender</th><td>${esc(p.gender)}</td></tr><tr><th>Fit</th><td>As described above</td></tr></table></div></div>
         <div class="acc"><button class="acc-head" id="pdpRevHead" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" id="pdpRevBody" hidden><p class="muted">Loading reviews…</p></div></div>
       </div>
     </div>
-    <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="#/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>
+    <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>
     ${recent.length ? `<section class="section"><div class="section-head"><h2>Recently viewed</h2></div><div class="h-scroll" data-grid>${recent.map(cardHTML).join("")}</div></section>` : ""}
   </div>`;
 }

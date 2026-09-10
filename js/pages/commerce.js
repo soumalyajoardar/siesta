@@ -61,18 +61,18 @@ export function CartPage() {
   });
   const rerender = () => { document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); };
 
-  if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Your cart is empty</h2><p class="muted">Beautiful essentials are waiting. Start with our best sellers.</p><div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" href="#/shop">Continue Shopping</a><a class="btn btn-light" href="#/shop?filter=new">Shop New Arrivals</a></div></div></div>`;
+  if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Your cart is empty</h2><p class="muted">Beautiful essentials are waiting. Start with our best sellers.</p><div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" href="/shop">Continue Shopping</a><a class="btn btn-light" href="/shop?filter=new">Shop New Arrivals</a></div></div></div>`;
   const flash = flashCoupon;
   flashCoupon = false;
 
   return `<div class="page">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><span aria-current="page">Cart</span></nav>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><span aria-current="page">Cart</span></nav>
     <h1 class="h-display" style="font-size:2rem">Your cart (${t.lines.reduce((s, l) => s + l.qty, 0)})</h1>
     <div class="split">
       <div class="card" aria-label="Cart items">
         ${t.lines.map((l) => `<div class="cart-line">
-          <a class="cart-thumb" href="#/product/${l.id}" aria-label="View ${esc(l.product.name)}">${productArt(l.product, 0, { w: 400 })}</a>
-          <div><h3><a href="#/product/${l.id}">${esc(l.product.name)}</a></h3>
+          <a class="cart-thumb" href="/product/${l.id}" aria-label="View ${esc(l.product.name)}">${productArt(l.product, 0, { w: 400 })}</a>
+          <div><h3><a href="/product/${l.id}">${esc(l.product.name)}</a></h3>
             <p class="line-meta">Size ${esc(l.size)} · ${esc(l.color)} · SKU ${esc(l.product.sku)}</p>
             <p class="line-meta">${(l.product.stock ?? 0) <= 5 ? `<strong style="color:var(--warning)">Only ${l.product.stock} left</strong>` : "In stock"}</p>
             <div class="line-controls">
@@ -81,7 +81,7 @@ export function CartPage() {
             </div></div>
           <div class="line-price" style="text-align:right"><strong>${inr(l.product.price * l.qty)}</strong><br/><s class="muted" style="font-size:.82rem">${inr(l.product.mrp * l.qty)}</s></div>
         </div>`).join("")}
-        <div style="margin-top:.8rem"><a class="link-btn" href="#/shop">← Continue shopping</a></div>
+        <div style="margin-top:.8rem"><a class="link-btn" href="/shop">← Continue shopping</a></div>
       </div>
       <aside class="card" aria-label="Order summary">
         <h2 style="margin:0 0 .4rem">Order summary</h2>
@@ -89,7 +89,7 @@ export function CartPage() {
         : `<form id="couponForm" class="coupon-row"><label class="visually-hidden" for="couponInput">Coupon code</label><input id="couponInput" class="input" placeholder="Coupon code" autocomplete="off"/><button class="btn btn-outline btn-sm" type="submit">Apply</button></form>`}
         ${breakdownHTML(t, flash)}
         ${t.shipping > 0 ? `<p class="muted" style="font-size:.82rem">Add ${inr(STORE.freeShipThreshold - (t.subtotal - t.discount))} more for free shipping.</p>` : ""}
-        <a class="btn btn-dark btn-block" href="#/checkout" style="margin-top:.8rem">Proceed to Checkout</a>
+        <a class="btn btn-dark btn-block" href="/checkout" style="margin-top:.8rem">Proceed to Checkout</a>
         <p class="muted" style="font-size:.82rem;text-align:center">Cash on Delivery available · Secure checkout</p>
       </aside>
     </div>
@@ -104,12 +104,12 @@ export function CheckoutPage() {
   // NOTE: logged-out visitors never reach here — the router sends them home.
   const t = S.totals();
   setTitle("Checkout — Siesta", "Delivery address, payment and order review.");
-  if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Nothing to check out</h2><p class="muted">Your cart is empty.</p><a class="btn btn-dark" href="#/shop">Browse Products</a></div></div>`;
+  if (t.lines.length === 0) return `<div class="page page-narrow"><div class="empty"><h2>Nothing to check out</h2><p class="muted">Your cart is empty.</p><a class="btn btn-dark" href="/shop">Browse Products</a></div></div>`;
   const addrs = S.getAddrs();
   setTimeout(() => wireCheckout(t));
   const steps = ["Address", "Delivery", "Payment", "Review"];
   return `<div class="page">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><a href="#/cart">Cart</a><span>/</span><span aria-current="page">Checkout</span></nav>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/cart">Cart</a><span>/</span><span aria-current="page">Checkout</span></nav>
     <h1 class="h-display" style="font-size:2rem">Checkout</h1>
     <ol class="steps" aria-label="Checkout progress">${steps.map((s, i) => `<li ${coState.step === i + 1 ? 'aria-current="step"' : ""}><span class="n">${i + 1}</span>${s}</li>`).join("")}</ol>
     <div class="split">
@@ -191,7 +191,7 @@ function wireCheckout(t) {
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Review & place order</h2>
         <p><strong>Deliver to:</strong> ${esc(coState.address.name)}, ${esc(coState.address.line1)}, ${esc(coState.address.city)} ${esc(coState.address.pin)} · ${esc(coState.address.phone)}</p>
         <p><strong>Payment:</strong> Cash on Delivery — ${inr(t.total)} due on delivery.</p>
-        <label class="check-row" style="margin:.6rem 0"><input type="checkbox" id="agree"/> I agree to the <a href="#/terms">Terms</a> and <a href="#/returns">Return Policy</a>. <span class="req" style="color:var(--clay)">*</span></label>
+        <label class="check-row" style="margin:.6rem 0"><input type="checkbox" id="agree"/> I agree to the <a href="/terms">Terms</a> and <a href="/returns">Return Policy</a>. <span class="req" style="color:var(--clay)">*</span></label>
         <div style="display:flex;gap:.6rem"><button class="btn btn-ghost" id="back3">← Payment</button><button class="btn btn-clay" id="placeBtn" style="flex:1">Place Order · ${inr(t.total)}</button></div>
         <p class="muted" style="font-size:.82rem">No advance payment is taken. COD orders can be cancelled before shipping from My Orders.</p></div>`;
       main.querySelector("#back3").onclick = () => { coState.step = 3; refresh(); };
@@ -248,7 +248,7 @@ function wireCheckout(t) {
                 S.clearCart(); S.removeCoupon(); resetCheckout();
                 document.dispatchEvent(new CustomEvent("siesta:counts"));
                 overlay.remove();
-                location.hash = "#/success/" + serverOrder.orderNo;
+                window.navigate("/success/") + serverOrder.orderNo;
                 return;
               } catch (err) {
                 if (err.validation) { fail(err.message); return; }
@@ -270,7 +270,7 @@ function wireCheckout(t) {
           S.clearCart(); S.removeCoupon(); resetCheckout();
           document.dispatchEvent(new CustomEvent("siesta:counts"));
           overlay.remove();
-          location.hash = "#/success/" + order.orderNo;
+          window.navigate("/success/") + order.orderNo;
         }, 600);
       }
     };
@@ -285,7 +285,7 @@ export function SuccessPage(orderNo) {
     await refreshMirror(orderNo); // pull admin status updates when online; no-op offline
     const o = S.getOrders().find((x) => x.orderNo === orderNo);
     const el = document.getElementById("successWrap");
-    if (el) el.innerHTML = o ? successHTML(o) : `<div class="empty"><h2>Order not found</h2><a class="btn btn-dark" href="#/orders">View My Orders</a></div>`;
+    if (el) el.innerHTML = o ? successHTML(o) : `<div class="empty"><h2>Order not found</h2><a class="btn btn-dark" href="/orders">View My Orders</a></div>`;
   });
   return `<div class="page page-narrow"><div id="successWrap"><div class="card"><div class="skel" style="height:280px"></div></div></div></div>`;
 }
@@ -303,8 +303,8 @@ function successHTML(o) {
     ${orderAmountsHTML(o.amounts)}
     <div class="summary-row total"><span>Total due on delivery</span><span>${inr(o.amounts.total)}</span></div>
     <div style="display:flex;gap:.6rem;margin-top:1.2rem;flex-wrap:wrap;justify-content:center">
-      <a class="btn btn-dark" href="#/track/${esc(o.orderNo)}">Track Order</a>
-      <a class="btn btn-light" href="#/shop">Continue Shopping</a>
+      <a class="btn btn-dark" href="/track/${esc(o.orderNo)}">Track Order</a>
+      <a class="btn btn-light" href="/shop">Continue Shopping</a>
     </div></div></div>`;
 }
 
@@ -315,7 +315,7 @@ export function TrackPage(orderNo) {
   if (!orderNo) {
   setTimeout(() => {
     const form = document.getElementById("trackForm");
-    form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) location.hash = "#/track/" + encodeURIComponent(v.toUpperCase()); });
+    form && (form.onsubmit = (e) => { e.preventDefault(); const v = document.getElementById("trackInput").value.trim(); if (v) window.navigate("/track/") + encodeURIComponent(v.toUpperCase()); });
     // Merge server-side history so other devices' orders appear here too.
     serverMyOrders().then(async (list) => {
       const box = document.getElementById("trackRecent");
@@ -324,19 +324,19 @@ export function TrackPage(orderNo) {
       for (const o of list) await mirrorOrder(o);
       const fresh = S.getOrders().slice(0, 5);
       if (fresh.some((x) => !known.has(x.orderNo))) {
-        box.innerHTML = `<h2>Recent orders</h2>${fresh.map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}`;
+        box.innerHTML = `<h2>Recent orders</h2>${fresh.map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}`;
       }
     }).catch(() => {});
   });
     return `<div class="page page-narrow"><h1 class="h-display" style="font-size:2rem">Track your order</h1>
     <form id="trackForm" class="coupon-row"><label class="visually-hidden" for="trackInput">Order number</label><input id="trackInput" class="input" placeholder="e.g. 4839201717484658"/><button class="btn btn-dark" type="submit">Track</button></form>
-    ${orders.length ? `<div id="trackRecent"><h2>Recent orders</h2>${orders.slice(0, 5).map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="#/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}</div>` : `<div id="trackRecent"><p class="muted">No orders on this device yet.</p></div>`}</div>`;
+    ${orders.length ? `<div id="trackRecent"><h2>Recent orders</h2>${orders.slice(0, 5).map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}</div>` : `<div id="trackRecent"><p class="muted">No orders on this device yet.</p></div>`}</div>`;
   }
   setTimeout(async () => {
     const el = document.getElementById("trackWrap");
     if (!el) return;
     const show404 = () => {
-      el.innerHTML = `<div class="page-narrow"><div class="empty"><span class="eyebrow">Error 404</span><h2>We couldn't find this order</h2><p class="muted">No order exists with number ${esc(orderNo)}. It may have been removed — check the number and try again.</p><div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" href="#/track">Try Again</a><a class="btn btn-light" href="#/shop">Continue Shopping</a></div></div></div>`;
+      el.innerHTML = `<div class="page-narrow"><div class="empty"><span class="eyebrow">Error 404</span><h2>We couldn't find this order</h2><p class="muted">No order exists with number ${esc(orderNo)}. It may have been removed — check the number and try again.</p><div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" href="/track">Try Again</a><a class="btn btn-light" href="/shop">Continue Shopping</a></div></div></div>`;
     };
     let raw = S.getOrders().find((x) => x.orderNo.toLowerCase() === orderNo.toLowerCase());
     try {
@@ -385,7 +385,7 @@ const noteFor = (stage, note) => (note && !LEGACY_NOTES.has(note) ? note : STAGE
 function trackHTML(o) {
   const stages = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
   const labels = { confirmed: "Order Confirmed", processing: "Processing", packed: "Packed", shipped: "Shipped", out_for_delivery: "Out for Delivery", delivered: "Delivered" };
-  const crumbs = `<nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Home</a><span>/</span><a href="#/orders">Orders</a><span>/</span><span aria-current="page">${esc(o.orderNo)}</span></nav>`;
+  const crumbs = `<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/orders">Orders</a><span>/</span><span aria-current="page">${esc(o.orderNo)}</span></nav>`;
   const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
   const thumbFor = (i) => {
     const p = productById(i.id);
@@ -408,7 +408,7 @@ function trackHTML(o) {
         <li class="done"><span class="dot" aria-hidden="true"></span><strong>Order Confirmed</strong>${conf ? `<time>${new Date(conf.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("confirmed", conf.note))}</div>` : ""}</li>
         <li class="done current cancelled"><span class="dot" aria-hidden="true"></span><strong>Cancelled</strong>${canc ? `<time>${new Date(canc.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("cancelled", canc.note))}</div>` : ""}</li>
       </ol>
-      <a class="btn btn-dark btn-sm" href="#/shop">Shop Again</a></div>${aside}</div>`;
+      <a class="btn btn-dark btn-sm" href="/shop">Shop Again</a></div>${aside}</div>`;
   }
 
   const pct = Math.round(((o.stageIndex ?? 0) / (stages.length - 1)) * 100);
@@ -456,7 +456,7 @@ export function WishlistPage() {
     }));
     root.querySelectorAll("[data-unwish]").forEach((b) => (b.onclick = () => { S.toggleWish(b.dataset.unwish); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }));
   });
-  if (!items.length) return `<div class="page page-narrow"><div class="empty"><h2>Your wishlist is empty</h2><p class="muted">Tap the heart on any product to save it here.</p><a class="btn btn-dark" href="#/shop">Discover Products</a></div></div>`;
+  if (!items.length) return `<div class="page page-narrow"><div class="empty"><h2>Your wishlist is empty</h2><p class="muted">Tap the heart on any product to save it here.</p><a class="btn btn-dark" href="/shop">Discover Products</a></div></div>`;
   return `<div class="page"><div class="section-head"><div><span class="eyebrow">${items.length} saved</span><h2 style="font-size:2rem">Wishlist</h2></div><button class="link-btn" id="clearW">Clear all</button></div>
   <div class="product-grid">${items.map(cardHTML).join("")}</div>
   <div class="card" style="margin-top:1.2rem"><h3 style="margin-top:0">Unavailable right now</h3>${items.filter((p) => !S.productById(p.id) || p.stock <= 0).map((p) => `<div class="summary-row"><span>${esc(p.name)}</span><button class="link-btn" data-unwish="${p.id}">Remove</button></div>`).join("") || '<p class="muted">Everything you saved is currently available.</p>'}

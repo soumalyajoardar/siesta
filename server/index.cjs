@@ -843,7 +843,7 @@ for (const dir of ["css", "js", "assets"]) {
   // No stale-code surprises: browsers revalidate every time (cheap 304s via ETag).
   app.use("/" + dir, express.static(path.join(ROOT, dir), { maxAge: 0, etag: true }));
 }
-app.get(["/", "/index.html"], (req, res) => res.sendFile(path.join(ROOT, "index.html")));
+app.get("*", (req, res, next) => { if (req.path.startsWith("/api") || req.path.startsWith("/admin")) return next(); res.sendFile(path.join(ROOT, "index.html")); });
 app.get("/robots.txt", (req, res) => res.sendFile(path.join(ROOT, "robots.txt")));
 app.get("/sitemap.xml", (req, res) => res.sendFile(path.join(ROOT, "sitemap.xml")));
 

@@ -11,7 +11,7 @@ const app = document.getElementById("app");
 const bootT0 = performance.now();
 window.__siestaBooted = true; // boot started — disables the no-JS failsafe trap
 
-function parseHash() {
+function parsePath() {
   const h = location.hash.slice(1) || "/";
   const [pathPart, queryPart] = h.split("?");
   const segs = pathPart.split("/").filter(Boolean);
@@ -21,7 +21,7 @@ function parseHash() {
 async function render() {
   barStart();
   document.getElementById("pdp-jsonld")?.remove(); // product schema belongs to PDP only
-  const { segs, query } = parseHash();
+  const { segs, query } = parsePath();
   closeMobileNav();
   // Maintenance mode: the whole storefront becomes one page. The cached flag
   // paints instantly (no flash of the store); a fresh fetch then confirms it.
@@ -44,7 +44,7 @@ async function render() {
   const PROTECTED = ["account", "orders", "checkout", "success"];
   if (PROTECTED.includes(segs[0]) && !(await S.currentUser())) {
     toast("Please log in to continue.");
-    location.replace("#/");
+    window.navigate("#/".replace(/^#/, ""), true);
     barDone();
     return;
   }
@@ -62,9 +62,9 @@ async function render() {
   else if (r === "register") html = RegisterPage(query);
   else if (r === "forgot") html = ForgotPage();
   else if (segs[0] === "account") html = AccountPage(segs[1] || "overview");
-  else if (r === "orders") { location.hash = "#/account/orders"; return; }
+  else if (r === "orders") { window.navigate("/account/orders"); return; }
   else if (["about", "contact", "faq", "shipping", "returns", "privacy", "terms", "cookies"].includes(segs[0])) html = StaticPages[segs[0]]();
-  else { location.replace("#/"); barDone(); return; }
+  else { window.navigate("#/".replace(/^#/, ""), true); barDone(); return; }
 
   app.innerHTML = html;
   observeReveals(app);
@@ -107,7 +107,7 @@ function barDone() {
 }
 
 function markActiveNav() {
-  const { segs, query } = parseHash();
+  const { segs, query } = parsePath();
   document.querySelectorAll(".desktop-nav a").forEach((a) => {
     const url = new URL(a.href.replace("#", ""), location.href);
     // hash links: compare manually
@@ -138,7 +138,19 @@ export function updateCounts() {
 }
 document.addEventListener("siesta:counts", updateCounts);
 document.addEventListener("siesta:reroute", render);
-window.addEventListener("hashchange", render);
+window.addEventListener("popstate", render);
+window.navigate = (path, replace = false) => {
+  if (replace) history.replaceState(null, "", path);
+  else history.pushState(null, "", path);
+  render();
+};
+document.addEventListener("click", e => {
+  const a = e.target.closest("a");
+  if (a && a.href && a.origin === location.origin && !a.hasAttribute("download") && !a.hasAttribute("target") && !a.pathname.startsWith("/admin") && !a.pathname.startsWith("/api") && !a.pathname.includes(".")) {
+    e.preventDefault();
+    window.navigate(a.pathname + a.search);
+  }
+});
 S.subscribe(updateCounts);
 
 // ---------- Mobile nav ----------
@@ -187,8 +199,8 @@ function pickSuggestion(i) {
   const s = currentList[i];
   hideSuggest();
   if (!s) return;
-  if (s.id) { S.pushSearch(input.value || s.label); location.hash = "#/product/" + s.id; }
-  else if (s.cat) location.hash = "#/shop?category=" + s.cat;
+  if (s.id) { S.pushSearch(input.value || s.label); window.navigate("/product/") + s.id; }
+  else if (s.cat) window.navigate("/shop?category=") + s.cat;
   else { goSearch(s.label); }
   input.value = "";
   clearBtn.hidden = true;
@@ -197,7 +209,7 @@ function goSearch(q) {
   q = q.trim();
   if (!q) return;
   S.pushSearch(q);
-  location.hash = "#/shop?q=" + encodeURIComponent(q);
+  window.navigate("/shop?q=") + encodeURIComponent(q);
 }
 input.addEventListener("input", () => { clearBtn.hidden = !input.value; showSuggest(); });
 input.addEventListener("focus", showSuggest);
