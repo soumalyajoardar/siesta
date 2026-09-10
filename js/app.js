@@ -275,13 +275,15 @@ function windowLoaded() {
 }
 
 function mediaSettled() {
-  // Eager images only — below-fold lazy images load as the user scrolls by design.
-  const imgs = [...document.images].filter((i) => !i.complete && i.loading !== "lazy");
+  // Every image/video currently in the DOM — including lazy ones — must
+  // finish (load or error) before the splash lifts. Anything still pending
+  // when the safety timer fires is left to load naturally (never a trap).
+  const imgs = [...document.images].filter((i) => !i.complete);
   const vids = [...document.querySelectorAll("video")];
   if (!imgs.length && !vids.length) return Promise.resolve();
   return new Promise((res) => {
     let left = imgs.length + vids.length;
-    const timer = setTimeout(fin, 8000);
+    const timer = setTimeout(fin, 10000);
     function fin() { clearTimeout(timer); res(); }
     const one = () => { if (--left <= 0) fin(); };
     imgs.forEach((i) => { i.addEventListener("load", one, { once: true }); i.addEventListener("error", one, { once: true }); });
@@ -290,6 +292,14 @@ function mediaSettled() {
       else { v.addEventListener("canplay", one, { once: true }); v.addEventListener("error", one, { once: true }); }
     });
   });
+}
+
+function reviewsReady() {
+  // Reviews data ready (best-effort ping — never blocks past the hard cap).
+  try {
+    return fetch("/api/reviews/recent?limit=1", { headers: { Accept: "application/json" } })
+      .then(() => {}).catch(() => {});
+  } catch { return Promise.resolve(); }
 }
 
 function hideSplash() {
@@ -304,31 +314,26 @@ function hideSplash() {
 
 (async () => {
   try {
-    // Peek at maintenance first: normal visits get an instant splash lift +
-    // skeleton paint, but maintenance mode keeps the splash until its page
-    // is painted (no flash of the store).
-    let maintOn = false;
-    try {
-      const s = await loadSettings();
-      maintOn = Boolean(s && s.maintenance && s.maintenance.enabled);
-    } catch {}
-    if (!maintOn) hideSplash();
+    // Splash stays until everything is truly ready: data, fonts, window
+    // load, every image, and the reviews feed (bounded by the hard cap).
     window.__catalogLoading = true;
-    render(); // paint skeleton immediately
+    render(); // paint skeleton underneath the splash
     await Promise.allSettled([loadCatalog(), loadCoupons(), loadEvents(), loadSettings()]);
     window.__catalogLoading = false;
-    await render(); // paint real data
+    await render(); // paint real data (still behind the splash)
     updateCounts();
     await Promise.race([
       (async () => {
         try { if (document.fonts) await document.fonts.ready; } catch {}
         await windowLoaded();
         await mediaSettled();
+        await reviewsReady();
+        await mediaSettled(); // second pass: images added by late renders
       })(),
       new Promise((res) => setTimeout(res, 12000)), // hard cap
     ]);
   } finally {
-    hideSplash(); // fallback
+    hideSplash();
   }
 })();
 

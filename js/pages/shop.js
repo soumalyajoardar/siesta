@@ -218,19 +218,6 @@ function setProductJsonLd(p, rating) {
   } catch { /* SEO enhancement only */ }
 }
 
-// Homepage verified-reviews showcase (real data only — hides when empty).
-function fillHomeReviews(root) {
-  const box = root.querySelector("#homeReviews");
-  if (!box) return;
-  fetch("/api/reviews/recent?limit=3").then((r) => r.json()).then((d) => {
-    if (!box.isConnected) return;
-    if (!d || !d.count) { box.closest("section").hidden = true; return; }
-    box.innerHTML = `<div class="rev-grid">
-      <div class="stat"><span class="muted">Average rating</span><strong>${stars(d.avg)} ${d.avg}</strong><a class="link-btn" href="/shop?filter=bestsellers">${d.count} verified reviews →</a></div>
-      ${d.reviews.map((r) => `<div class="stat"><span class="muted">${esc(r.productName || "Verified purchase")}</span><strong style="font-size:1rem">${stars(r.rating)} ${esc(r.title || "")}</strong><p class="muted" style="font-size:.84rem;margin:.3rem 0">“${esc(r.text.slice(0, 90))}${r.text.length > 90 ? "…" : ""}”</p><span class="verified">Verified Purchase</span></div>`).join("")}
-    </div>`;
-  }).catch(() => { if (box.isConnected) box.closest("section").hidden = true; });
-}
 export function HomePage() {
   setTitle("Siesta — Modern Essentials & Streetwear", "Premium everyday fashion: tees, shirts, jackets, hoodies, denim and more.");
   const ALL = window.__catalogLoading ? Array.from({length: 8}) : catalog();
@@ -291,7 +278,7 @@ export function HomePage() {
       </div>` : ""}
     </section>`;
 
-  setTimeout(() => { const root = document.getElementById("app"); bindCards(root); observeReveals(root); initHero(root, slides.length); fillHomeReviews(root); });
+  setTimeout(() => { const root = document.getElementById("app"); bindCards(root); observeReveals(root); initHero(root, slides.length); });
   // Preload the LCP hero photo + first-row covers so first paint already has them.
   setTimeout(() => {
     try {
@@ -356,11 +343,6 @@ export function HomePage() {
     <section class="section" aria-labelledby="bestH">
       <div class="section-head"><div><span class="eyebrow">Customer favourites</span><h2 id="bestH">Best sellers</h2><p>Core styles our customers reorder — merchandised by our studio, not by paid placement.</p></div><a class="link-btn" href="/shop?filter=bestsellers">Shop all →</a></div>
       <div class="product-grid" data-grid>${best.map(cardHTML).join("")}</div>
-    </section>
-
-    <section class="section" aria-labelledby="revH">
-      <div class="section-head"><div><span class="eyebrow">Verified reviews</span><h2 id="revH">Loved by customers</h2><p>Real reviews from verified delivered purchases — never paid, never faked.</p></div></div>
-      <div id="homeReviews"><div class="stat-grid"><div class="stat"><div class="skel" style="height:90px"></div></div><div class="stat"><div class="skel" style="height:90px"></div></div><div class="stat"><div class="skel" style="height:90px"></div></div></div></div>
     </section>
 
     <section class="brand-statement reveal" aria-label="About Siesta">

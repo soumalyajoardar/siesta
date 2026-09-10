@@ -389,13 +389,16 @@ function trackHTML(o) {
   const thumbFor = (i) => {
     const p = productById(i.id);
     const src = p && p.images && p.images[0];
-    if (src) return `<img class="t-item-thumb" src="${esc(imgVariant(src, 200, 60))}" alt="" loading="lazy" onerror="this.remove()" />`;
-    if (p) return `<span class="t-item-thumb t-item-art" aria-hidden="true">${productArt(p)}</span>`;
-    return `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
+    const inner = src
+      ? `<img class="t-item-thumb" src="${esc(imgVariant(src, 200, 60))}" alt="" loading="lazy" onerror="this.remove()" />`
+      : p
+        ? `<span class="t-item-thumb t-item-art" aria-hidden="true">${productArt(p)}</span>`
+        : `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
+    return p ? `<a href="/product/${i.id}" aria-label="View ${esc(i.name)}" style="flex:none;line-height:0">${inner}</a>` : inner;
   };
   const aside = `<aside class="card track-aside"><h2 style="margin-top:0">Delivery details</h2>
     <p class="t-addr"><span aria-hidden="true">${addrIcon(o.address.label, 16)}</span><span>${esc(o.address.name)} <span class="muted" style="font-size:.8rem">${addrLabel(o.address.label)}</span><br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
-    <h3>Items (${itemCount})</h3>${o.items.map((i) => `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${esc(i.name)} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
+    <h3>Items (${itemCount})</h3>${o.items.map((i) => { const live = productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${nm} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`; }).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
 
   if (o.status === "cancelled") {
     const conf = o.timeline.find((t) => t.stage === "confirmed");

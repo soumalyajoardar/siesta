@@ -38,6 +38,7 @@ body{
   margin:0;background:var(--paper);color:var(--ink);
   font-family:var(--font-body);font-size:16px;line-height:1.6;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overflow-x:clip; /* hard guarantee: no horizontal scrolling (clip preserves sticky) */
 }
 ::selection{background:var(--forest);color:#fff}
 /* Quiet branded scrollbar (forest-on-sand), thin everywhere */
