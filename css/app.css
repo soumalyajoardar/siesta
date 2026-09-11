@@ -637,34 +637,7 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
 .sticky-pdp-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);padding:1rem;border-top:1px solid var(--line);z-index:90;box-shadow:0 -4px 12px rgba(0,0,0,0.05)} @media (max-width:768px) { .sticky-pdp-bar:not([hidden]){display:block} }
 
 /* ============ Delivery ETA + lively tracking ============ */
-.eta-banner{display:flex;gap:.85rem;align-items:center;background:linear-gradient(135deg,var(--forest),var(--forest-deep));color:#F3EFE6;border-radius:14px;padding:1rem 1.15rem;margin:0 0 1.1rem;animation:pageIn .45s var(--ease)}
-.eta-banner.kind-delayed{background:linear-gradient(135deg,#7A4A21,#5C3618)}
-.eta-banner.kind-delivered{background:linear-gradient(135deg,#2E6B45,#1E4A30)}
-.eta-ic{flex:none;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
-.eta-ic svg{width:22px;height:22px}
-.eta-tx{display:flex;flex-direction:column;gap:.1rem;min-width:0}
-.eta-tx strong{font-family:var(--font-display);font-size:1.35rem;letter-spacing:.01em}
-.eta-tx span{font-size:.85rem;color:#D8D2C4}
-.eta-banner .pill{margin-left:auto;flex:none;background:rgba(255,255,255,.16);border-color:transparent;color:#fff}
-.eta-banner .pill.ok{background:#fff;color:var(--forest-deep)}
 .eta-line{display:inline-flex;align-items:center;gap:.35rem;font-size:.84rem;color:var(--forest-deep);font-weight:600}
-/* animated progress rail with travelling truck */
-.tl-railwrap{margin:.2rem 0 1.3rem}
-.tl-rail{position:relative;height:10px;border-radius:99px;background:var(--sand-2);overflow:visible}
-.tl-fill{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:linear-gradient(90deg,var(--forest),#4C7A6C,#6FA08F,var(--forest));background-size:220% 100%;animation:railFlow 2.6s linear infinite,barGrow 1s var(--ease) both}
-.tl-truck{position:absolute;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:999px;background:#fff;border:2px solid var(--forest);color:var(--forest-deep);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(26,60,52,.25);animation:truckBob 1.6s ease-in-out infinite;transition:left .8s var(--ease)}
-.tl-truck svg{width:16px;height:16px}
-.tl-scale{display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted);margin-top:.45rem}
-@keyframes railFlow{to{background-position:-220% 0}}
-@keyframes truckBob{0%,100%{transform:translateY(-1px)}50%{transform:translateY(1px)}}
-/* stepper nodes with SVG icons + schedule chips */
-.timeline.lively .dot.dot-ic{display:flex;align-items:center;justify-content:center;color:var(--muted)}
-.timeline.lively .dot.dot-ic svg{width:12px;height:12px}
-.timeline.lively .dot.dot-ic::after{content:none}
-.timeline.lively li.done .dot.dot-ic{background:var(--forest);border-color:var(--forest);color:#fff}
-.timeline.lively li.current .dot.dot-ic{background:#fff;border-color:var(--forest);color:var(--forest-deep)}
-.timeline.lively .t-main{min-width:0}
-.t-chip{display:inline-block;font-size:.76rem;font-weight:700;color:var(--forest-deep);background:#EFF3EF;border:1px dashed var(--forest);border-radius:99px;padding:.1rem .6rem;margin-top:.25rem}
 /* ============ White image loading (no illustration flash) ============ */
 .art-wrap,.cat-art{position:relative;background:#fff}
 :is(.art-wrap,.cat-art)[data-photo]>svg{visibility:hidden}
