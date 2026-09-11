@@ -2,7 +2,7 @@
 import { BUSINESS } from "../config.js";
 import * as S from "../store.js";
 import { esc, inr, setTitle, toast, confirmDialog, isEmail, openReviewModal, addrIcon, addrLabel } from "../ui.js";
-import { serverCancelOrder, serverMyOrders, mirrorOrder } from "../api.js";
+import { serverCancelOrder, serverMyOrders, mirrorOrder, orderNotifyOn, setOrderNotify } from "../api.js";
 
 const needAuth = async () => {
   const u = await S.currentUser();
@@ -134,7 +134,7 @@ function wireAccount(tab, u) {
       <div class="card" style="margin-top:1rem"><h3 style="margin-top:0">Latest order</h3>${orders[0] ? `<div class="summary-row"><span><strong>${esc(orders[0].orderNo)}</strong> · ${esc(orders[0].status.replace(/_/g, " "))}</span><a class="link-btn" href="/track/${esc(orders[0].orderNo)}">Track →</a></div>` : `<p class="muted">No orders yet. <a href="/shop">Start shopping</a>.</p>`}</div>`;
   } else if (tab === "orders") {
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => `<div class="order-card"><div class="order-top"><div><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span></div><span class="pill ${o.status === "delivered" ? "ok" : o.status === "cancelled" ? "" : "warn"}">${esc(o.status.replace(/_/g, " "))}</span></div>
-      <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}</div>
+      <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}${o.status === "delivered" ? `<a class="link-btn" href="/invoice/${esc(o.orderNo)}" target="_blank">Download Invoice</a>` : ""}</div>
       <div data-dwrap="${esc(o.orderNo)}" hidden style="margin-top:.6rem">${o.items.map((i, k) => { const live = S.productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="summary-row"><span>${nm} × ${i.qty} (${esc(i.size)})</span><span>${o.status === "delivered" ? `<button class="link-btn" data-rev="${esc(o.orderNo)}::${k}">Review</button> ` : ""}${inr(i.price * i.qty)}</span></div>`; }).join("")}</div></div>`).join("") : `<div class="empty"><h2>No orders yet</h2><p class="muted">Orders placed on this device will appear here.</p><a class="btn btn-dark" href="/shop">Start Shopping</a></div>`}</div>`;
     main.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => { const w = main.querySelector(`[data-dwrap="${b.dataset.detail}"]`); w.hidden = !w.hidden; }));
     main.querySelectorAll("[data-rev]").forEach((b) => (b.onclick = () => {
@@ -186,8 +186,26 @@ function wireAccount(tab, u) {
     };
   } else {
     const prefs = S.getPrefs();
-    main.innerHTML = `<div class="card"><h3 style="margin-top:0">Preferences</h3><label class="check-row"><input type="checkbox" id="prefNews" ${localStorage.getItem("siesta.news.v1") ? "checked" : ""}/> Newsletter emails (only if you subscribed)</label><p class="muted" style="font-size:.85rem">Manage cookies anytime via “Cookie preferences” in the footer.</p><button class="btn btn-outline btn-sm" id="wipeBtn">Erase my data on this device</button></div>`;
-    main.querySelector("#wipeBtn").onclick = async () => { if (await confirmDialog("Erase data", "Remove cart, wishlist, orders and account data stored in this browser?", "Erase everything")) { ["siesta.cart.v1", "siesta.wish.v1", "siesta.orders.v1", "siesta.addrs.v1", "siesta.users.v1", "siesta.recent.v1", "siesta.searches.v1"].forEach((k) => localStorage.removeItem(k)); S.logout(); toast("Local data erased."); window.navigate("/"); } };
+    main.innerHTML = `<div class="card"><h3 style="margin-top:0">Preferences</h3><label class="check-row"><input type="checkbox" id="prefNews" ${localStorage.getItem("siesta.news.v1") ? "checked" : ""}/> Newsletter emails (only if you subscribed)</label><label class="check-row"><input type="checkbox" id="prefOrderNotify" ${orderNotifyOn() ? "checked" : ""}/> Order updates — browser notification when your order moves to the next stage</label><p class="muted" style="font-size:.85rem">Manage cookies anytime via “Cookie preferences” in the footer.</p><button class="btn btn-outline btn-sm" id="wipeBtn">Erase my data on this device</button></div>`;
+    main.querySelector("#prefOrderNotify").onchange = async (e) => {
+      if (e.target.checked) {
+        if ("Notification" in window && Notification.permission === "default") {
+          try { await Notification.requestPermission(); } catch {}
+        }
+        if ("Notification" in window && Notification.permission !== "granted") {
+          toast("Please allow notifications in your browser settings to get order updates.", "error");
+          e.target.checked = false;
+          setOrderNotify(false);
+          return;
+        }
+        setOrderNotify(true);
+        toast("Order updates on — we'll notify you at each stage.");
+      } else {
+        setOrderNotify(false);
+        toast("Order updates off.");
+      }
+    };
+    main.querySelector("#wipeBtn").onclick = async () => { if (await confirmDialog("Erase data", "Remove cart, wishlist, orders and account data stored in this browser?", "Erase everything")) { S.clearDeviceLists(); ["siesta.users.v1", "siesta.recent.v1", "siesta.searches.v1"].forEach((k) => localStorage.removeItem(k)); S.logout(); toast("Local data erased."); window.navigate("/"); } };
   }
 }
 
@@ -200,7 +218,25 @@ export const StaticPages = {
   contact: () => {
     setTitle("Contact Us — Siesta", "Reach Siesta support.");
     setTimeout(() => {
-      document.getElementById("ctForm").onsubmit = (e) => { e.preventDefault(); const v = Object.fromEntries(new FormData(e.target).entries()); if (!isEmail(v.email) || v.message.trim().length < 10) { toast("Enter a valid email and a message of at least 10 characters.", "error"); return; } toast("Thanks — your message has been noted. Our team will reply from the official support email once configured."); e.target.reset(); };
+      const form = document.getElementById("ctForm");
+      if (!form) return;
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('[type="submit"]');
+        const v = Object.fromEntries(new FormData(e.target).entries());
+        const name = String(v.name || "").trim();
+        if (name.length < 2) { toast("Please enter your name.", "error"); return; }
+        if (!isEmail(v.email) || String(v.message || "").trim().length < 10) { toast("Enter a valid email and a message of at least 10 characters.", "error"); return; }
+        btn.disabled = true;
+        try {
+          const r = await fetch("/api/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email: String(v.email).trim(), message: String(v.message).trim() }) });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || "Could not send message.");
+          toast("Thanks — your message has been sent to our team.");
+          e.target.reset();
+        } catch (err) { toast(err.message, "error"); }
+        finally { btn.disabled = false; }
+      };
     });
     return `<div class="page"><div class="prose"><h1>Contact us</h1><p>Support email: <strong>${esc(biz(BUSINESS.supportEmail))}</strong><br/>Phone: <strong>${esc(biz(BUSINESS.supportPhone))}</strong><br/>Hours: ${esc(biz(BUSINESS.hours))}<br/>Address: ${esc(biz(BUSINESS.businessAddress))}</p><form id="ctForm" class="form-grid" style="margin-top:1rem"><div class="field"><label for="ctName">Name *</label><input id="ctName" name="name" class="input" autocomplete="name"/></div><div class="field"><label for="ctEmail">Email *</label><input id="ctEmail" name="email" type="email" class="input" autocomplete="email"/></div><div class="field full"><label for="ctMsg">How can we help? *</label><textarea id="ctMsg" name="message" class="input" rows="5" placeholder="Order number (if any) + your question"></textarea></div><div class="full"><button class="btn btn-dark" type="submit">Send Message</button></div></form></div></div>`;
   },
@@ -209,6 +245,6 @@ export const StaticPages = {
   returns: () => prose("Returns & Refunds", `<p>You may return unworn, unwashed items with tags within <strong>7 days of delivery</strong>. For hygiene, briefs/innerwear (if ever sold) would be final sale — Siesta currently sells outerwear only.</p><h2>How to return</h2><p>Raise a request from <a href="/account/orders">My Orders</a> or <a href="/contact">Contact Us</a> with your order number. We arrange a doorstep pickup where serviceable.</p><h2>Refunds (COD)</h2><p>Since COD is paid at delivery, refunds are issued via bank transfer/UPI within 5–7 business days of passing quality check. No cash refunds via courier.</p><h2>Cancellations</h2><p>Cancel free of charge before the order ships, from My Orders.</p>`),
   privacy: () => prose("Privacy Policy", `<p>We collect only what we need: account details you provide, delivery addresses, order contents, and your cookie choices. We do not collect card numbers, CVVs, UPI PINs or banking credentials — the checkout never asks for them.</p><h2>What we store and where</h2><p>Your account, addresses, cart, wishlist, orders and reviews are stored in our secured database so they work on every device you log into. Your browser also keeps local copies for speed and offline use. Account passwords are hashed (never plaintext) and travel over encrypted HTTPS connections.</p><h2>Marketing consent</h2><p>Newsletter and marketing checkboxes are never pre-checked. You can withdraw consent anytime from Account → Preferences.</p><h2>Your rights</h2><p>Access, correct or erase your data from Account settings (“Erase my data on this device”). For server-side copies, contact our grievance officer at ${esc(biz(BUSINESS.grievanceOfficer))}.</p><h2>Third parties</h2><p>We load no advertising trackers, analytics pixels, chat widgets or social embeds in this build. If any are added later, they will be listed here and gated behind cookie consent.</p>`),
   terms: () => prose("Terms & Conditions", `<p>By using Siesta you agree to shop honestly: provide accurate delivery details, accept COD terms, and use the site lawfully. Prices are in INR and include taxes where applicable. We may cancel orders involving pricing errors, suspected fraud, or undeliverable addresses, with a full refund of any amount paid.</p><h2>Products</h2><p>Colours may vary slightly by screen. Garment measurements in the size guide are approximate (±0.5″).</p><h2>Limitation</h2><p>To the extent permitted by law, Siesta's liability is limited to the value of the affected order. Consumer rights under Indian law remain unaffected.</p>`),
-  cookies: () => prose("Cookie Policy", `<p>We use four categories:</p><ul><li><strong>Necessary</strong> — cart, checkout, login, security. Always on.</li><li><strong>Preferences</strong> — filters, recently viewed. Optional.</li><li><strong>Analytics</strong> — anonymous counts. Off by default; no scripts load until you opt in.</li><li><strong>Marketing</strong> — newsletter personalisation. Off by default.</li></ul><p>Change your choice anytime via “Cookie preferences” in the footer. Consent state is stored in your browser only.</p><table class="config-table"><tr><th>Key</th><th>Purpose</th><th>Storage</th></tr><tr><td>siesta.consent.v1</td><td>Remembers cookie choice</td><td>localStorage</td></tr><tr><td>siesta.cart.v1 / wish / orders</td><td>Store features</td><td>localStorage</td></tr></table>`),
+  cookies: () => prose("Cookie Policy", `<p>We use four categories:</p><ul><li><strong>Necessary</strong> — cart, checkout, login, security. Always on.</li><li><strong>Preferences</strong> — filters, recently viewed. Optional.</li><li><strong>Analytics</strong> — anonymous counts. Off by default; no scripts load until you opt in.</li><li><strong>Marketing</strong> — newsletter personalisation. Off by default.</li></ul><p>Change your choice anytime via “Cookie preferences” in the footer. Consent state is stored in your browser only.</p><table class="config-table"><tr><th>Key</th><th>Purpose</th><th>Storage</th></tr><tr><td>siesta.consent.v1</td><td>Remembers cookie choice</td><td>localStorage</td></tr><tr><td>siesta.cart.v1 / wish / orders</td><td>Store features</td><td>localStorage (tab session when logged in without “Remember me”)</td></tr></table>`),
   notfound: () => `<div class="page page-narrow"><div class="empty"><h2>Page not found (404)</h2><p class="muted">The page you're looking for moved or never existed.</p><div style="display:flex;gap:.6rem;justify-content:center"><a class="btn btn-dark" href="/">Go Home</a><a class="btn btn-light" href="/shop">Shop All</a></div></div></div>`,
 };

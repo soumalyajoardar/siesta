@@ -7,7 +7,7 @@
 const json = require("./db.cjs");
 const sbs = require("./supabase.cjs");
 
-const COLLECTIONS = ["products", "coupons", "orders", "events", "settings", "reviews", "admin", "customers"];
+const COLLECTIONS = ["products", "coupons", "orders", "events", "settings", "reviews", "admin", "customers", "messages"];
 
 function backend() {
   return sbs.isConfigured() ? "supabase" : "json";
@@ -38,6 +38,8 @@ const getAdmin = () => load("admin", null);
 const saveAdmin = (v) => save("admin", v);
 const getCustomers = () => load("customers", []);
 const saveCustomers = (v) => save("customers", v);
+const getMessages = () => load("messages", []);
+const saveMessages = (v) => save("messages", v);
 const getSettings = () => load("settings", { freeShipThreshold: 1499, shipFlat: 79, codMaxOrder: 20000 });
 
 // Copy local JSON data into Supabase once (only collections missing there).
@@ -60,6 +62,6 @@ async function migrateIfNeeded() {
 module.exports = {
   backend, load, save,
   getProducts, saveProducts, getCoupons, saveCoupons,
-  getOrders, saveOrders, getEvents, saveEvents, getReviews, saveReviews, getAdmin, saveAdmin, getCustomers, saveCustomers, getSettings, saveSettings: (v) => save("settings", v),
+  getOrders, saveOrders, getEvents, saveEvents, getReviews, saveReviews, getAdmin, saveAdmin, getCustomers, saveCustomers, getMessages, saveMessages, getSettings, saveSettings: (v) => save("settings", v),
   migrateIfNeeded,
 };

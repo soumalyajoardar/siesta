@@ -1,9 +1,10 @@
 // Cart, Checkout (COD-only), Order success, Tracking, Wishlist.
-import { STORE } from "../config.js";
+import { STORE, BUSINESS } from "../config.js";
 import { productById } from "../store.js";
 import * as S from "../store.js";
 import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openReviewModal, imgVariant, addrIcon, addrLabel } from "../ui.js";
-import { apiHealth, serverCreateOrder, serverFetchOrder, mirrorOrder, refreshMirror, serverCancelOrder, loadCatalog } from "../api.js";
+import { apiHealth, serverCreateOrder, serverFetchOrder, serverMyOrders, mirrorOrder, refreshMirror, serverCancelOrder,
+  loadCatalog } from "../api.js";
 import { cardHTML, bindCards } from "./shop.js";
 
 // Set right before a coupon apply/remove re-render so the changed rows flash.
@@ -67,7 +68,7 @@ export function CartPage() {
 
   return `<div class="page">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><span aria-current="page">Cart</span></nav>
-    <h1 class="h-display" style="font-size:2rem">Your cart (${t.lines.reduce((s, l) => s + l.qty, 0)})</h1>
+    <h1 class="h-display" style="font-size:2rem"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:8px"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg> Your cart (${t.lines.reduce((s, l) => s + l.qty, 0)})</h1>
     <div class="split">
       <div class="card" aria-label="Cart items">
         ${t.lines.map((l) => `<div class="cart-line">
@@ -193,8 +194,8 @@ function wireCheckout(t) {
       };
     } else if (coState.step === 2) {
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Delivery method</h2>
-        <label class="pay-option ${!coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="standard" ${!coState.express ? 'checked' : ''}/><span><strong>Standard delivery (3–6 days)</strong><br/><span class="muted">${t.subtotal - t.discount >= STORE.freeShipThreshold ? "Free — your order qualifies for complimentary shipping" : "₹80"}</span></span></label>
-        <label class="pay-option ${coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="express" ${coState.express ? 'checked' : ''}/><span><strong>Express delivery (1–2 days)</strong><br/><span class="muted">₹150</span></span></label>
+        <label class="pay-option ${!coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="standard" ${!coState.express ? 'checked' : ''}/><span><strong><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg> Standard delivery (3–6 days)</strong><br/><span class="muted">${t.subtotal - t.discount >= STORE.freeShipThreshold ? "Free — your order qualifies for complimentary shipping" : "₹80"}</span></span></label>
+        <label class="pay-option ${coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="express" ${coState.express ? 'checked' : ''}/><span><strong><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Express delivery (1–2 days)</strong><br/><span class="muted">₹150</span></span></label>
         <div style="display:flex;gap:.6rem;margin-top:.8rem"><button class="btn btn-ghost" id="back1">← Address</button><button class="btn btn-dark" id="toPay" style="flex:1">Continue to Payment</button></div></div>`;
       main.querySelectorAll('input[name="delivery"]').forEach((r) => r.onchange = () => {
         coState.express = (r.value === "express");
@@ -453,20 +454,15 @@ function trackHTML(o) {
       : etaDays <= 0 ? "Arriving today" : `Arriving in ${etaDays} day${etaDays === 1 ? "" : "s"}`;
   return `${crumbs}
   <div class="split"><div class="card track-card">
-    <div class="track-hero">
-      <div>
-        <h1 class="h-display" style="font-size:1.8rem;margin:.2rem 0 .3rem">${esc(etaText)}</h1>
-        <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
-        ${isExpress ? `<div class="express-note"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg> Express delivery</h3><p>Your order has been automatically upgraded to express delivery. Enjoy your products at the earliest with our express service.</p></div>` : ""}
+      <div class="track-hero">
+        <div>
+          <h1 class="h-display" style="font-size:1.8rem;margin:.2rem 0 .3rem">${esc(etaText)}</h1>
+          <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
+          ${isExpress && o.amounts.shipping !== 150 ? `<div class="express-note"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg> Express delivery</h3><p>Your order has been manually upgraded to express delivery.</p></div>` : ""}
+        </div>
+        <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">📋</span></button>
       </div>
-      <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">⧉</span></button>
-    </div>
-    ${o.status === "delivered" ? 
-      `<div class="eta-panel"><span aria-hidden="true">✔</span><div><strong>Delivered successfully</strong><br /><span class="muted" style="font-size:.84rem">Order complete</span></div></div>` 
-      : 
-      `<div class="eta-panel"><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><div><strong>${isExpress ? `Express delivery · ${esc(o.express.option)}` : `Estimated delivery · ${esc(o.eta)}`}</strong><br /><span class="muted" style="font-size:.84rem">${pct}% of the way there</span></div></div>`
-    }
-    <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
+      <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
     <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
     ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review Product</button>`).join("")}</div></div>` : ""}
     <p class="muted" style="font-size:.82rem">${o._remote ? "Live status from the Siesta store — updated at every step from packing to delivery." : "Status reflects Siesta's order system on this device. Live courier scans will appear here once a delivery partner is connected."}</p></div>
@@ -566,4 +562,57 @@ export function WishlistPage() {
   <div class="product-grid">${items.map(cardHTML).join("")}</div>
   <div class="card" style="margin-top:1.2rem"><h3 style="margin-top:0">Unavailable right now</h3>${items.filter((p) => !S.productById(p.id) || p.stock <= 0).map((p) => `<div class="summary-row"><span>${esc(p.name)}</span><button class="link-btn" data-unwish="${p.id}">Remove</button></div>`).join("") || '<p class="muted">Everything you saved is currently available.</p>'}
   <div style="display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap">${items.filter((p) => p.stock > 0).map((p) => `<button class="btn btn-light btn-sm" data-move="${p.id}">Move ${esc(p.name.slice(0, 22))}… to cart</button>`).join("")}</div></div></div>`;
+}
+
+export function InvoicePage(orderNo) {
+  setTitle(`Invoice ${esc(orderNo)} — Siesta`, "Tax Invoice");
+  setTimeout(async () => {
+    try {
+      let o = S.getOrders().find((x) => x.orderNo === orderNo);
+      if (!o) o = await serverFetchOrder(orderNo);
+      if (!o) { document.getElementById("invRoot").innerHTML = `<div class="empty"><h2>Not found</h2><p>Order not found.</p></div>`; return; }
+      if (o.status !== "delivered") { document.getElementById("invRoot").innerHTML = `<div class="empty"><h2>Unavailable</h2><p>Invoices are only generated for delivered orders.</p></div>`; return; }
+      const couponCode = typeof o.coupon === "string" ? o.coupon : "";
+      const a = o.amounts || {};
+      const addr = o.address || {};
+      const invNo = `INV-${o.orderNo}`;
+      const invHTML = `<style>
+        @media print {
+          body > * { display: none !important; }
+          #app, #invRoot { display: block !important; }
+          #invRoot { position: absolute; left: 0; top: 0; width: 100%; }
+          #invRoot .btn { display: none !important; }
+          #invRoot > div { margin: 0 !important; padding: 0 !important; border: none !important; max-width: 100% !important; }
+        }
+      </style>
+      <div style="max-width:800px;margin:2rem auto;padding:2rem;background:#fff;color:#111;border:1px solid #ccc;font-family:sans-serif">
+        <div style="display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:1rem;margin-bottom:2rem">
+          <div><h1 style="margin:0;font-size:2rem;letter-spacing:1px">SIESTA.</h1><p style="margin:.2rem 0;color:#555;font-size:.85rem">${esc(BUSINESS.businessAddress)}<br/>${esc(BUSINESS.supportEmail)}<br/>${esc(BUSINESS.supportPhone)}</p></div>
+          <div style="text-align:right"><h2 style="margin:0;font-size:1.5rem;color:#555">TAX INVOICE</h2><p style="margin:.2rem 0;font-size:.85rem"><strong>Invoice No:</strong> ${esc(invNo)}<br/><strong>Order:</strong> ${esc(o.orderNo)}<br/><strong>Date:</strong> ${new Date(o.createdAt).toLocaleDateString("en-IN")}</p></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:2rem">
+          <div><p style="margin:0;font-size:.85rem;color:#555;text-transform:uppercase;font-weight:700">Bill To:</p><p style="margin:.2rem 0;font-size:.95rem"><strong>${esc(addr.name || "")}</strong><br/>${esc(addr.line1 || "")}<br/>${esc(addr.city || "")}${addr.state ? `, ${esc(addr.state)}` : ""} ${esc(addr.pin || "")}<br/>${esc(addr.phone || "")}</p></div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:2rem">
+          <thead><tr style="border-bottom:1px solid #ccc;text-align:left"><th style="padding:.5rem;font-size:.85rem">Item</th><th style="padding:.5rem;font-size:.85rem">Size</th><th style="padding:.5rem;font-size:.85rem;text-align:right">Qty</th><th style="padding:.5rem;font-size:.85rem;text-align:right">Price</th><th style="padding:.5rem;font-size:.85rem;text-align:right">Total</th></tr></thead>
+          <tbody>
+            ${o.items.map(i => `<tr style="border-bottom:1px solid #eee"><td style="padding:.5rem;font-size:.9rem">${esc(i.name)}</td><td style="padding:.5rem;font-size:.9rem">${esc(i.size)}</td><td style="padding:.5rem;font-size:.9rem;text-align:right">${i.qty}</td><td style="padding:.5rem;font-size:.9rem;text-align:right">${inr(i.price)}</td><td style="padding:.5rem;font-size:.9rem;text-align:right">${inr(i.price * i.qty)}</td></tr>`).join("")}
+          </tbody>
+        </table>
+        <div style="display:flex;justify-content:flex-end">
+          <table style="width:300px;border-collapse:collapse">
+            <tr><td style="padding:.3rem;text-align:right;color:#555">Subtotal</td><td style="padding:.3rem;text-align:right">${inr(a.subtotal || 0)}</td></tr>
+            ${(a.discount || 0) > 0 ? `<tr><td style="padding:.3rem;text-align:right;color:#555">Discount${couponCode ? ` (${esc(couponCode)})` : ""}</td><td style="padding:.3rem;text-align:right;color:var(--danger)">-${inr(a.discount)}</td></tr>` : ""}
+            <tr><td style="padding:.3rem;text-align:right;color:#555">Shipping</td><td style="padding:.3rem;text-align:right">${!a.shipping ? "Free" : inr(a.shipping)}</td></tr>
+            ${(a.roundOff || 0) !== 0 ? `<tr><td style="padding:.3rem;text-align:right;color:#555">Round-off</td><td style="padding:.3rem;text-align:right">${inr(a.roundOff)}</td></tr>` : ""}
+            <tr style="font-weight:700;font-size:1.1rem;border-top:1px solid #111"><td style="padding:.5rem;text-align:right">Total</td><td style="padding:.5rem;text-align:right">${inr(a.total || 0)}</td></tr>
+          </table>
+        </div>
+        ${(a.savings || 0) > 0 ? `<p style="text-align:right;color:#2e7d32;font-size:.9rem;margin-top:.6rem">You saved ${inr(a.savings)} on this order.</p>` : ""}
+        <div style="margin-top:3rem;text-align:center"><button class="btn btn-dark" onclick="window.print()" style="margin-right:1rem">Print Invoice</button><a class="btn btn-outline" href="/account/orders">Back to Orders</a></div>
+      </div>`;
+      document.getElementById("invRoot").innerHTML = invHTML;
+    } catch { document.getElementById("invRoot").innerHTML = `<div class="empty"><p class="err">Could not load invoice.</p></div>`; }
+  });
+  return `<div class="page" id="invRoot"><div class="empty"><p class="muted">Loading invoice…</p></div></div>`;
 }

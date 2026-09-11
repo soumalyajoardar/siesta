@@ -220,15 +220,44 @@ export async function serverCancelOrder(orderNo) {
 
 // Keep a local mirror of server orders so order history + tracking work
 // uniformly, and refresh it from the server whenever we're online.
+const ORDER_STAGE_LABEL = { confirmed: "Order Confirmed", processing: "Processing", packed: "Packed", shipped: "Shipped", out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled" };
+// "Notify enabled" = browser permission granted + the order-updates
+// preference on (Account → Preferences; on by default).
+export const orderNotifyOn = () => {
+  try { return localStorage.getItem("siesta.notifyOrders.v1") !== "off"; }
+  catch { return true; }
+};
+export const setOrderNotify = (on) => {
+  try { localStorage.setItem("siesta.notifyOrders.v1", on ? "on" : "off"); }
+  catch {}
+};
+// Fires a browser notification when a real (server-mirrored) order moves to
+// a new stage. Purely-local demo orders never notify — their progression is
+// illustrative, not a genuine status change.
+function notifyOrderStage(order, prevStatus) {
+  try {
+    if (!prevStatus || prevStatus === order.status) return;
+    if (!orderNotifyOn()) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const label = ORDER_STAGE_LABEL[order.status] || String(order.status).replace(/_/g, " ");
+    new Notification("Siesta order update", {
+      body: `Order ${order.orderNo}: ${label}.`,
+      tag: `siesta-order-${order.orderNo}-${order.status}`,
+    });
+  } catch { /* notifications must never break order sync */ }
+}
 export async function mirrorOrder(order) {
   try {
-    let all = [];
-    try { all = JSON.parse(localStorage.getItem("siesta.orders.v1") || "[]"); } catch {}
+    // Scoped storage (dynamic import: store.js already imports this module).
+    const S = await import("./store.js");
+    const all = S.getOrders();
     const i = all.findIndex((o) => o.orderNo === order.orderNo);
+    const prevStatus = i >= 0 ? all[i].status : null;
     const merged = { ...order, _remote: true };
     if (i >= 0) { if (all[i].status === "cancelled" && order.status !== "cancelled") return all[i]; all[i] = merged; }
-    else all = [merged, ...all];
-    localStorage.setItem("siesta.orders.v1", JSON.stringify(all));
+    else all.unshift(merged);
+    S.setOrders(all);
+    notifyOrderStage(merged, prevStatus);
     return merged;
   } catch { return order; }
 }

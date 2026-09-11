@@ -88,12 +88,12 @@
   $("#logoutBtn").addEventListener("click", showLogin);
 
   /* ---------- router ---------- */
-  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", customers: "Customers", reviews: "Reviews", coupons: "Coupons", media: "Media Library", settings: "Settings" };
+  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", customers: "Customers", reviews: "Reviews", messages: "Messages", coupons: "Coupons", media: "Media Library", settings: "Settings" };
   let productsCache = [];
   function nav(view) {
     $$("#sideNav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     $("#viewTitle").textContent = TITLES[view];
-    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, customers: vCustomers, reviews: vReviews, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
+    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, customers: vCustomers, reviews: vReviews, messages: vMessages, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
   }
   $("#sideNav").addEventListener("click", (e) => { if (e.target.dataset.view) nav(e.target.dataset.view); });
 
@@ -218,7 +218,8 @@
     });
     $("#mClose").addEventListener("click", () => (root.innerHTML = ""));
     root.querySelector(".modal-scrim").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-scrim")) root.innerHTML = ""; });
-    $("#pForm").addEventListener("submit", async (e) => {
+    
+      $("#pForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const colors = String(fd.get("colors")).split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
@@ -614,8 +615,34 @@
     } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }
 
-  /* ---------- orders ---------- */
-  async function vOrders() {
+  /* ---------- messages (customer support inbox) ---------- */
+  async function vMessages() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/messages");
+      $("#view").innerHTML = `
+        <div class="stat-grid" style="grid-template-columns:repeat(1,1fr)">
+          <div class="stat"><span>Open messages</span><strong>${list.length}</strong></div>
+        </div>
+        <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+          <tr><th>Date</th><th>From</th><th>Message</th><th></th></tr>
+          ${list.map((m) => `<tr>
+            <td class="muted small">${new Date(m.createdAt).toLocaleString("en-IN")}</td>
+            <td><strong>${esc(m.name)}</strong><br /><a class="muted small" href="mailto:${esc(m.email)}">${esc(m.email)}</a></td>
+            <td><span class="muted">${esc(m.message.slice(0, 300))}${m.message.length > 300 ? "…" : ""}</span></td>
+            <td style="white-space:nowrap"><a class="btn btn-light btn-sm" href="mailto:${esc(m.email)}?subject=${encodeURIComponent("Re: your message to Siesta")}">Reply</a> <button class="btn btn-light btn-sm" data-mdel="${esc(m.id)}">Delete</button></td>
+          </tr>`).join("") || `<tr><td colspan="4" class="muted">No messages — customer queries from the Contact page land here.</td></tr>`}
+        </table></div>
+        <p class="muted small">Reply opens your email app addressed to the customer. Delete messages once resolved.</p>`;
+      $$("#view [data-mdel]").forEach((b) => (b.onclick = async () => {
+        if (!confirm("Delete this message permanently?")) return;
+        try { await api("/api/admin/messages/" + encodeURIComponent(b.dataset.mdel), { method: "DELETE" }); toast("Message deleted."); vMessages(); }
+        catch (e) { toast(e.message, "error"); }
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- orders ---------- */  async function vOrders() {
     $("#view").innerHTML = "<p class='muted'>Loading…</p>";
     try {
       const orders = await api("/api/admin/orders");
@@ -635,19 +662,24 @@
           return o.status === f;
         });
         $("#oCount").textContent = `${list.length} orders`;
-        $("#olist").innerHTML = list.map((o) => `
-          <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
-            <div><strong>${esc(o.orderNo)}</strong><br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
-            <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
-            <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
-            <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
-            <select class="status" data-ex="${esc(o.orderNo)}" aria-label="Express delivery for ${esc(o.orderNo)}" ${["delivered", "cancelled"].includes(o.status) ? "disabled" : ""}>
-              <option value="">Express: off${o.express ? "" : " ✓"}</option>
-              <option value="today" ${o.express && o.express.option === "today" ? "selected" : ""}>Express: today</option>
-              <option value="tomorrow" ${o.express && o.express.option === "tomorrow" ? "selected" : ""}>Express: tomorrow</option>
-            </select>
-            <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
-          </div></div>`).join("") || "<p class='muted'>No orders in this state.</p>";
+          $("#olist").innerHTML = list.map((o) => {
+            let expressOpt = o.express?.option;
+            if (expressOpt === "tomorrow" && new Date(o.express?.at || o.createdAt).toLocaleDateString("en-IN") !== new Date().toLocaleDateString("en-IN")) {
+              expressOpt = "today";
+            }
+            return `
+            <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
+              <div><strong>${esc(o.orderNo)}</strong><br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
+              <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
+              <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
+              <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+              <select class="status" data-ex="${esc(o.orderNo)}" aria-label="Express delivery for ${esc(o.orderNo)}" ${["delivered", "cancelled"].includes(o.status) ? "disabled" : ""}>
+                <option value="">Express: off${o.express ? "" : " ✔"}</option>
+                <option value="today" ${expressOpt === "today" ? "selected" : ""}>Express: today</option>
+                <option value="tomorrow" ${expressOpt === "tomorrow" ? "selected" : ""}>Express: tomorrow</option>
+              </select>
+              <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
+            </div></div>`}).join("") || "<p class='muted'>No orders in this state.</p>";
         $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
           try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
           catch (e) { toast(e.message, "error"); }
@@ -737,6 +769,8 @@
           ${files.map((f) => `<div class="img-cell"><img src="${esc(f.url)}" alt="" loading="lazy" /><button data-mdel="${esc(f.name)}" aria-label="Delete ${esc(f.name)}">✕</button></div>`).join("") || "<p class='muted'>No uploads yet.</p>"}
         </div>`;
       $$("#view [data-copy]").forEach((b) => (b.onclick = () => copyText(b.dataset.copy)));
+        
+
       $("#mUp").addEventListener("change", async (e) => {
         try { const up = await uploadFiles(e.target.files); toast(`${up.length} image(s) uploaded.`); vMedia(); }
         catch (err) { toast(err.message, "error"); }

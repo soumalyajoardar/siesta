@@ -80,7 +80,7 @@ const STAGE_NOTES = {
 const CATEGORIES = ["tshirts", "shirts", "jackets", "hoodies", "jeans", "pants", "shorts", "sweatshirts"];
 
 /* ---------------- helpers ---------------- */
-const { getProducts, getCoupons, getOrders, getSettings, getEvents, getReviews } = store;
+const { getProducts, getCoupons, getOrders, getSettings, getEvents, getReviews, getMessages } = store;
 const notExpired = (c) => new Date(c.expires + "T23:59:59") >= new Date();
 const discountPct = (p) => (p.mrp > p.price ? Math.round((1 - p.price / p.mrp) * 100) : 0);
 // Allowed image locations: local uploads, project images folder, Supabase bucket.
@@ -121,6 +121,30 @@ function sanitizeProduct(b, isNew) {
 
 /* ---------------- public API ---------------- */
 app.get("/api/health", (req, res) => res.json({ ok: true, store: "Siesta", backend: store.backend(), time: new Date().toISOString() }));
+
+const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || "").trim());
+// Tiny contact-form throttle: 5 messages per IP per hour (spam guard).
+const contactHits = new Map();
+app.post("/api/contact", async (req, res) => {
+  try {
+    const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "unknown";
+    const now = Date.now();
+    const hits = (contactHits.get(ip) || []).filter((t) => now - t < 60 * 60 * 1000);
+    if (hits.length >= 5) return res.status(429).json({ error: "Too many messages. Please try again in a little while." });
+    const name = String(req.body?.name || "").trim().slice(0, 100);
+    const email = String(req.body?.email || "").trim().slice(0, 160);
+    const message = String(req.body?.message || "").trim().slice(0, 2000);
+    if (name.length < 2) return res.status(400).json({ error: "Please enter your name." });
+    if (!emailOk(email)) return res.status(400).json({ error: "Please enter a valid email address." });
+    if (message.length < 10) return res.status(400).json({ error: "Please write at least a sentence (10+ characters)." });
+    hits.push(now);
+    contactHits.set(ip, hits);
+    const msgs = await store.getMessages();
+    const id = require("crypto").randomBytes(8).toString("hex");
+    await store.saveMessages([{ id, name, email, message, createdAt: new Date().toISOString() }, ...msgs].slice(0, 500));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not send message." }); }
+});
 
 // Maintenance gate: when enabled from Admin → Settings, the storefront shows
 // a maintenance page and no new orders/reviews can be created (admin stays usable).
@@ -337,7 +361,7 @@ app.post("/api/orders", async (req, res) => {
       payment: "Cash on Delivery", coupon: couponCode,
       amounts: { subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total },
       status: "confirmed",
-      express: express ? { option: 'tomorrow' } : null,
+      express: express ? { option: new Date().getHours() < 17 ? "today" : "tomorrow", at: now } : null,
       timeline: [{ stage: "confirmed", at: now, note: "Order placed — Cash on Delivery" }],
     };
     await store.saveOrders([order, ...(await getOrders())]);
@@ -783,6 +807,19 @@ app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
     await store.saveReviews((await getReviews()).filter((r) => r.id !== req.params.id));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: "Could not delete the review." }); }
+});
+
+/* ---------------- admin: contact messages (customer support inbox) ---------------- */
+app.get("/api/admin/messages", requireAdmin, async (req, res) => {
+  try {
+    res.json((await store.getMessages()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  } catch (e) { res.status(500).json({ error: "Could not load messages." }); }
+});
+app.delete("/api/admin/messages/:id", requireAdmin, async (req, res) => {
+  try {
+    await store.saveMessages((await store.getMessages()).filter((m) => m.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not delete the message." }); }
 });
 
 /* ---------------- admin: customers (read-only list, no password data) ---------------- */

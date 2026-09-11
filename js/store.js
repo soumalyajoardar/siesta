@@ -23,6 +23,55 @@ const K = {
 
 const read = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+// ---------- Session-scoped device data ----------
+// When signed in WITHOUT "remember me", the cart, wishlist, orders,
+// addresses and coupon live in sessionStorage instead of localStorage, so
+// they die with the tab instead of lingering for the next visitor.
+// Guests and remembered logins keep using localStorage exactly as before.
+const SESS_FLAG = "siesta.sessMode.v1";
+const LIST_KEYS = [K.cart, K.wish, K.orders, K.addrs, K.coupon];
+const sessMode = () => { try { return sessionStorage.getItem(SESS_FLAG) === "1"; } catch { return false; } };
+const sread = (k, fb) => {
+  try {
+    const v = (sessMode() ? sessionStorage : localStorage).getItem(k);
+    return v ? JSON.parse(v) : fb;
+  } catch { return fb; }
+};
+const swrite = (k, v) => { try { (sessMode() ? sessionStorage : localStorage).setItem(k, JSON.stringify(v)); } catch {} };
+// Which account the persistent (localStorage) device lists belong to —
+// prevents one user's leftovers merging into the next login on this device.
+const OWNER_KEY = "siesta.listOwner.v1";
+export function clearDeviceLists() {
+  try {
+    [...LIST_KEYS, SESS_FLAG].forEach((k) => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
+  } catch {}
+}
+// Adopt device lists for a fresh login/register: a different account starts
+// clean (no cross-account merge); the same account keeps its lists. A
+// non-remember session gets a tab-scoped copy seeded from the device lists.
+function adoptAuth(email, remember) {
+  email = String(email || "").trim().toLowerCase();
+  try {
+    const prev = localStorage.getItem(OWNER_KEY);
+    if (prev && prev !== email) LIST_KEYS.forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+    localStorage.setItem(OWNER_KEY, email);
+    LIST_KEYS.forEach((k) => { try { sessionStorage.removeItem(k); } catch {} });
+    if (remember) { try { sessionStorage.removeItem(SESS_FLAG); } catch {} }
+    else {
+      LIST_KEYS.forEach((k) => { try { const v = localStorage.getItem(k); if (v !== null) sessionStorage.setItem(k, v); } catch {} });
+      try { sessionStorage.setItem(SESS_FLAG, "1"); } catch {}
+    }
+  } catch {}
+  emit();
+}
+// Drop the tab-scoped copy (explicit logout, or the server rejected the
+// session). The server keeps the account's last synced state.
+function endSessionScope() {
+  try {
+    [...LIST_KEYS, SESS_FLAG].forEach((k) => { try { sessionStorage.removeItem(k); } catch {} });
+  } catch {}
+}
 const listeners = new Set();
 export const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 const emit = () => listeners.forEach((f) => { try { f(); } catch {} });
@@ -66,7 +115,7 @@ export async function currentUser() {
         meCache = { at: Date.now(), user: data.user };
         return data.user;
       } catch (e) {
-        if (e.status === 401) { clearToken(); dropCache(); return null; }
+        if (e.status === 401) { clearToken(); dropCache(); endSessionScope(); emit(); return null; }
         return meCache.user || currentUserLocal();
       }
     }
@@ -83,6 +132,7 @@ async function registerLocal({ name, email, password, phone, marketing }) {
   users.push(user);
   write(K.users, users);
   setSession(email, true);
+  adoptAuth(email, true);
   emit();
   return user;
 }
@@ -92,6 +142,7 @@ export async function register(input) {
       try {
         const data = await authRegister(input);
         setToken(data.token, true);
+        adoptAuth(data.user.email, true);
         dropCache();
         await pullAddresses();
         emit();
@@ -109,6 +160,7 @@ async function loginLocal(email, password, remember) {
   const hash = await hashPassword(password, user.salt);
   if (hash !== user.hash) throw new Error("Incorrect password. Please try again or reset your password.");
   setSession(email, remember);
+  adoptAuth(email, remember);
   emit();
   return user;
 }
@@ -118,6 +170,7 @@ export async function login(email, password, remember) {
       try {
         const data = await authLogin({ email, password });
         setToken(data.token, remember !== false);
+        adoptAuth(email, remember !== false);
         dropCache();
         await pullAddresses();
         emit();
@@ -137,6 +190,7 @@ function setSession(email, remember) {
 export function logout() {
   clearToken(); dropCache();
   sessionStorage.removeItem(K.session); localStorage.removeItem(K.remember);
+  endSessionScope();
   emit();
 }
 export async function updateProfile(email, patch) {
@@ -192,7 +246,7 @@ async function pullState() {
     const r = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + getToken() } });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.user) return;
-    if (Array.isArray(data.addresses) && data.addresses.length) write(K.addrs, data.addresses);
+    if (Array.isArray(data.addresses) && data.addresses.length) swrite(K.addrs, data.addresses);
     const merged = [...getCart()];
     for (const l of Array.isArray(data.cart) ? data.cart : []) {
       const p = l && productById(l.id);
@@ -201,16 +255,16 @@ async function pullState() {
       if (ex) ex.qty = Math.min(10, ex.qty + Math.min(10, Number(l.qty) || 1));
       else if (merged.length < 50) merged.push({ id: l.id, size: l.size, color: l.color || p.colors[0].name, qty: Math.min(10, Number(l.qty) || 1) });
     }
-    write(K.cart, merged);
-    write(K.wish, [...new Set([...getWish(), ...((Array.isArray(data.wishlist) ? data.wishlist : []).filter((id) => productById(id)))])]);
+    swrite(K.cart, merged);
+    swrite(K.wish, [...new Set([...getWish(), ...((Array.isArray(data.wishlist) ? data.wishlist : []).filter((id) => productById(id)))])]);
     if (!getAddrs().length) pushState();
     emit();
   } catch { /* offline: keep local */ }
 }
 
 // ---------- Cart ----------
-export const getCart = () => read(K.cart, []); // [{id,size,color,qty}]
-export function setCart(c) { write(K.cart, c); emit(); pushState(); }
+export const getCart = () => sread(K.cart, []); // [{id,size,color,qty}]
+export function setCart(c) { swrite(K.cart, c); emit(); pushState(); }
 export function addToCart(id, size, color, qty = 1) {
   const p = productById(id);
   if (!p) throw new Error("Product not found.");
@@ -254,7 +308,7 @@ export function totals() {
   return { lines, subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total, coupon };
 }
 const isExpired = (c) => new Date(c.expires + "T23:59:59") < new Date();
-export const getCoupon = () => read(K.coupon, null);
+export const getCoupon = () => sread(K.coupon, null);
 export function applyCoupon(code) {
   code = code.trim().toUpperCase();
   const c = couponList().find((x) => x.code === code);
@@ -262,23 +316,23 @@ export function applyCoupon(code) {
   if (isExpired(c)) throw new Error("This coupon has expired.");
   const { subtotal } = totals();
   if (subtotal < c.minSubtotal) throw new Error(`This coupon needs a minimum order of ₹${c.minSubtotal.toLocaleString("en-IN")}. Add ₹${(c.minSubtotal - subtotal).toLocaleString("en-IN")} more.`);
-  write(K.coupon, c); emit();
+  swrite(K.coupon, c); emit();
   return c;
 }
-export const removeCoupon = () => { localStorage.removeItem(K.coupon); emit(); };
+export const removeCoupon = () => { try { localStorage.removeItem(K.coupon); sessionStorage.removeItem(K.coupon); } catch {} emit(); };
 
 // ---------- Wishlist ----------
-export const getWish = () => read(K.wish, []);
+export const getWish = () => sread(K.wish, []);
 export function toggleWish(id) {
   let w = getWish();
   w = w.includes(id) ? w.filter((x) => x !== id) : [...w, id];
-  write(K.wish, w); emit(); pushState();
+  swrite(K.wish, w); emit(); pushState();
   return w.includes(id);
 }
-export const clearWish = () => { write(K.wish, []); emit(); pushState(); };
+export const clearWish = () => { swrite(K.wish, []); emit(); pushState(); };
 
 // ---------- Addresses ----------
-export const getAddrs = () => read(K.addrs, []);
+export const getAddrs = () => sread(K.addrs, []);
 export function saveAddr(a) {
   const list = getAddrs();
   if (a.id) {
@@ -290,16 +344,17 @@ export function saveAddr(a) {
     list.push(a);
   }
   if (a.isDefault) list.forEach((x) => { if (x.id !== a.id) x.isDefault = false; });
-  write(K.addrs, list); emit();
+  swrite(K.addrs, list); emit();
   pushAddresses();
   return a;
 }
-export function deleteAddr(id) { write(K.addrs, getAddrs().filter((x) => x.id !== id)); emit(); pushAddresses(); }
+export function deleteAddr(id) { swrite(K.addrs, getAddrs().filter((x) => x.id !== id)); emit(); pushAddresses(); }
 
 // ---------- Orders (local order-state simulation — NOT courier scans) ----------
 const STAGES = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
 export const STAGE_LABEL = { confirmed: "Order Confirmed", processing: "Processing", packed: "Packed", shipped: "Shipped", out_for_delivery: "Out for Delivery", delivered: "Delivered" };
-export function getOrders() { return read(K.orders, []); }
+export function getOrders() { return sread(K.orders, []); }
+export function setOrders(list) { swrite(K.orders, list); emit(); }
 export function createOrder({ items, address, payment, amounts }) {
   const taken = new Set(getOrders().map((o) => o.orderNo));
   let orderNo = "";
@@ -313,7 +368,7 @@ export function createOrder({ items, address, payment, amounts }) {
     timeline: [{ stage: "confirmed", at: now, note: "Order placed · Cash on Delivery" }],
   };
   const all = [order, ...getOrders()];
-  write(K.orders, all);
+  swrite(K.orders, all);
   return order;
 }
 // Order progress: the STORED status is always authoritative (set by admin or
@@ -342,12 +397,12 @@ const etaFor = (iso) => {
 };
 export function cancelOrder(no) {
   const all = getOrders().map((o) => (o.orderNo === no ? { ...o, status: "cancelled", timeline: [...o.timeline, { stage: "cancelled", at: new Date().toISOString(), note: "Cancelled by customer" }] } : o));
-  write(K.orders, all); emit();
+  swrite(K.orders, all); emit();
 }
 // Drop a server-mirrored order that no longer exists remotely (admin-deleted).
 // Purely-local (never-synced) orders are always kept.
 export function removeOrderLocal(orderNo) {
-  write(K.orders, getOrders().filter((o) => o.orderNo !== orderNo)); emit();
+  swrite(K.orders, getOrders().filter((o) => o.orderNo !== orderNo)); emit();
 }
 
 // ---------- Misc persistence ----------

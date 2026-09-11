@@ -4,7 +4,7 @@ import { loadCatalog, loadCoupons, loadEvents, loadSettings, siteSettings } from
 import * as S from "./store.js";
 import { esc, toast, observeReveals, isEmail, popBadge, reducedMotion, setTitle } from "./ui.js";
 import { HomePage, ShopPage, ProductPage } from "./pages/shop.js";
-import { CartPage, CheckoutPage, SuccessPage, TrackPage, WishlistPage, resetCheckout } from "./pages/commerce.js";
+import { CartPage, CheckoutPage, SuccessPage, TrackPage, WishlistPage, InvoicePage, resetCheckout } from "./pages/commerce.js";
 import { LoginPage, RegisterPage, ForgotPage, AccountPage, StaticPages } from "./pages/account.js";
 
 const app = document.getElementById("app");
@@ -52,9 +52,20 @@ async function render() {
   else if (segs[0] === "shop" || segs[0] === "search") html = ShopPage(query);
   else if (segs[0] === "product" && segs[1]) html = ProductPage(decodeURIComponent(segs[1]));
   else if (r === "cart") html = CartPage();
-  else if (r === "checkout") html = CheckoutPage();
+  else if (r === "checkout") {
+    // No guest checkout — an account is required so orders, addresses and
+    // tracking stay linked to the customer on every device.
+    if (!(await S.currentUser())) {
+      toast("Please log in to check out.");
+      window.navigate("/login?next=" + encodeURIComponent("/checkout"));
+      barDone();
+      return;
+    }
+    html = CheckoutPage();
+  }
   else if (segs[0] === "success" && segs[1]) html = SuccessPage(decodeURIComponent(segs[1]));
   else if (segs[0] === "track") html = TrackPage(segs[1] ? decodeURIComponent(segs[1]) : "");
+  else if (segs[0] === "invoice" && segs[1]) html = InvoicePage(decodeURIComponent(segs[1]));
   else if (r === "wishlist") html = WishlistPage();
   else if (r === "login") html = LoginPage(query);
   else if (r === "register") html = RegisterPage(query);

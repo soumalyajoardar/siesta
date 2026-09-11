@@ -337,7 +337,7 @@ export function HomePage() {
       <div class="section-head"><div><span class="eyebrow">Collections</span><h2 id="genH">Shop by collection</h2><p>Three fits, one standard of quality.</p></div></div>
       <div class="gender-grid">
         ${[["men", "Men", "Cut for him"], ["women", "Women", "Cut for her"], ["unisex", "Unisex", "Cut for everyone"]].map(([g, label, blurb], i) => {
-          const n = ALL.filter((p) => p.gender === g).length;
+          const n = ALL.filter((p) => p && p.gender === g).length;
           const photo = siteCollectionImage(g);
           const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onerror="this.remove()" />` : ""}</span>`;
           return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
@@ -407,17 +407,17 @@ export function ShopPage(query) {
     const needle = state.q.toLowerCase();
     list = list.filter((p) => [p.name, p.category, p.gender, p.desc, p.material, ...p.colors.map((c) => c.name)].join(" ").toLowerCase().includes(needle));
   }
-  if (state.category) list = list.filter((p) => p.category === state.category);
-  if (state.gender) list = list.filter((p) => p.gender === state.gender);
-  if (state.filter === "new") list = list.filter((p) => p.isNew);
-  if (state.filter === "sale") list = list.filter((p) => discountPct(p) > 0);
-  if (state.filter === "bestsellers") list = list.filter((p) => p.bestseller);
-  list = list.filter((p) => p.price <= state.maxPrice);
-  if (state.sizes.size) list = list.filter((p) => p.sizes.some((s) => state.sizes.has(s)));
-  if (state.avail === "in") list = list.filter(inStock);
-  if (state.color) list = list.filter((p) => p.colors.some((c) => c.name.toLowerCase().includes(state.color.toLowerCase())));
+  if (state.category && !window.__catalogLoading) list = list.filter((p) => p.category === state.category);
+  if (state.gender && !window.__catalogLoading) list = list.filter((p) => p.gender === state.gender);
+  if (state.filter === "new" && !window.__catalogLoading) list = list.filter((p) => p.isNew);
+  if (state.filter === "sale" && !window.__catalogLoading) list = list.filter((p) => discountPct(p) > 0);
+  if (state.filter === "bestsellers" && !window.__catalogLoading) list = list.filter((p) => p.bestseller);
+  if (!window.__catalogLoading) list = list.filter((p) => p.price <= state.maxPrice);
+  if (state.sizes.size && !window.__catalogLoading) list = list.filter((p) => p.sizes.some((s) => state.sizes.has(s)));
+  if (state.avail === "in" && !window.__catalogLoading) list = list.filter(inStock);
+  if (state.color && !window.__catalogLoading) list = list.filter((p) => p.colors.some((c) => c.name.toLowerCase().includes(state.color.toLowerCase())));
   const sorters = { "price-asc": (a, b) => a.price - b.price, "price-desc": (a, b) => b.price - a.price, newest: (a, b) => b.added.localeCompare(a.added), popularity: (a, b) => b.popularity - a.popularity };
-  if (sorters[state.sort]) list = [...list].sort(sorters[state.sort]);
+  if (sorters[state.sort] && !window.__catalogLoading) list = [...list].sort(sorters[state.sort]);
 
   const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
   state.page = Math.min(Math.max(1, state.page), pages);
