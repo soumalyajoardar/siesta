@@ -395,6 +395,29 @@ const etaFor = (iso) => {
   const d = new Date(new Date(iso).getTime() + 5 * 86400000);
   return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 };
+// ---------- Delivery estimate (dynamic, recomputed on every render) ----------
+// Automated orders use the scheduler's delivery day; otherwise standard = +5
+// days, express = +2 days. Because it derives from dates (not stored text),
+// "Arriving in 5 days" automatically becomes 4 tomorrow.
+const DAY_MS = 86400000;
+const startOfDay = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const fmtDay = (t) => new Date(t).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+export function deliveryInfo(o) {
+  if (!o) return null;
+  if (o.status === "cancelled") return { kind: "cancelled", headline: "Order cancelled", detail: "", date: null, daysLeft: null };
+  if (o.status === "delivered") {
+    const hit = [...(o.timeline || [])].reverse().find((t) => t.stage === "delivered");
+    const at = hit ? new Date(hit.at).getTime() : new Date(o.createdAt).getTime();
+    return { kind: "delivered", headline: "Delivered", detail: "Delivered on " + fmtDay(at), date: at, daysLeft: 0 };
+  }
+  const target = o.auto && o.auto.deliverAt
+    ? new Date(o.auto.deliverAt).getTime()
+    : new Date(o.createdAt).getTime() + (o.express ? 2 : 5) * DAY_MS;
+  const daysLeft = Math.ceil((startOfDay(target) - startOfDay(Date.now())) / DAY_MS);
+  const headline = daysLeft > 1 ? `Arriving in ${daysLeft} days` : daysLeft === 1 ? "Arriving tomorrow" : daysLeft === 0 ? "Arriving today" : "Delayed — arriving soon";
+  const detail = "Estimated delivery " + fmtDay(target) + (o.auto && o.auto.active ? " · automated daily" : o.express ? " · express" : "");
+  return { kind: daysLeft < 0 ? "delayed" : "active", headline, detail, date: target, daysLeft };
+}
 export function cancelOrder(no) {
   const all = getOrders().map((o) => (o.orderNo === no ? { ...o, status: "cancelled", timeline: [...o.timeline, { stage: "cancelled", at: new Date().toISOString(), note: "Cancelled by customer" }] } : o));
   swrite(K.orders, all); emit();

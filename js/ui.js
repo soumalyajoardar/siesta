@@ -153,7 +153,9 @@ export function productArt(p, colorIdx = 0, opts = {}) {
   const photo = p.images && p.images[Math.min(colorIdx, p.images.length - 1)];
   if (!photo) return svg;
   const w = opts.w || 600;
-  return `<span class="art-wrap">${svg}<img class="art-photo" src="${esc(imgVariant(photo, w))}" alt="${esc(label)}" loading="${opts.loading || "lazy"}" onerror="this.remove()" /></span>`;
+  // White shimmer until the photo decodes (no illustration flash): the wrap
+  // hides its illustration via [data-photo] CSS until this img resolves.
+  return `<span class="art-wrap" data-photo>${svg}<img class="art-photo" src="${esc(imgVariant(photo, w))}" alt="${esc(label)}" loading="${opts.loading || "lazy"}" onload="this.classList.add('on');this.closest('.art-wrap')?.classList.add('ld')" onerror="this.closest('.art-wrap')?.classList.add('ld');this.closest('.art-wrap')?.removeAttribute('data-photo');this.remove()" /></span>`;
 }
 
 // Photo at an explicit index (for galleries), falling back to illustration.
@@ -163,7 +165,7 @@ export function photoArt(p, idx = 0, full = false) {
   if (!all.length) return productArt(p, 0);
   const raw = all[idx % all.length];
   const src = full ? raw : imgVariant(raw, 1000, 75);
-  return `<span class="art-wrap">${productArt({ ...p, images: [] }, 0)}<img class="art-photo" src="${esc(src)}" alt="${esc(p.name)} — photo ${idx + 1}" onerror="this.remove()" /></span>`;
+  return `<span class="art-wrap" data-photo>${productArt({ ...p, images: [] }, 0)}<img class="art-photo" src="${esc(src)}" alt="${esc(p.name)} — photo ${idx + 1}" onload="this.classList.add('on');this.closest('.art-wrap')?.classList.add('ld')" onerror="this.closest('.art-wrap')?.classList.add('ld');this.closest('.art-wrap')?.removeAttribute('data-photo');this.remove()" /></span>`;
 }
 export const hasAltVisual = (p) => Boolean((p.images && p.images[1]) || (!(p.images && p.images.length) && p.colors.length > 1));
 
@@ -186,8 +188,8 @@ export function catArt(id, img = "") {
   const [cat, hex] = map[id] || ["tshirts", "#E8E0D2"];
   const svg = `<svg viewBox="0 0 300 240" style="width:100%;height:100%"><rect width="300" height="240" fill="${bgFor(id)}"/><ellipse cx="150" cy="90" rx="110" ry="70" fill="rgba(255,255,255,.5)"/><g transform="translate(75,-30) scale(.5)">${garmentShape(cat, hex)}</g></svg>`;
   // Admin-uploaded photo overlays the illustration (removed if it fails to load).
-  const photo = img ? `<img src="${esc(imgVariant(img, 800))}" alt="" loading="lazy" onerror="this.remove()" />` : "";
-  return `<span class="cat-art" aria-hidden="true">${svg}${photo}</span>`;
+  const photo = img ? `<img class="art-photo" src="${esc(imgVariant(img, 800))}" alt="" loading="lazy" onload="this.classList.add('on');this.closest('.cat-art')?.classList.add('ld')" onerror="this.closest('.cat-art')?.classList.add('ld');this.closest('.cat-art')?.removeAttribute('data-photo');this.remove()" />` : "";
+  return `<span class="cat-art"${img ? " data-photo" : ""} aria-hidden="true">${svg}${photo}</span>`;
 }
 
 // ---------- Fly-to-cart + badge pop (skipped under reduced motion) ----------

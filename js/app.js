@@ -365,6 +365,25 @@ function hideSplash() {
   toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" }));
 }
 
+// ---------- Product-image loading states (white shimmer, no illustration flash) ----------
+// Inline onload/onerror attributes cover template-rendered photos; this
+// delegated pair is the safety net for any photo without them.
+document.addEventListener("load", (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLImageElement) || !t.classList.contains("art-photo")) return;
+  t.classList.add("on");
+  try { t.closest(".art-wrap,.cat-art,.hero-art")?.classList.add("ld"); } catch {}
+}, true);
+document.addEventListener("error", (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLImageElement) || !t.classList.contains("art-photo")) return;
+  try {
+    const w = t.closest(".art-wrap,.cat-art,.hero-art");
+    w?.classList.add("ld");
+    w?.removeAttribute("data-photo");
+  } catch {}
+}, true);
+
 // ---------- Background polling for restock notifications ----------
 setInterval(() => {
   let notifies = JSON.parse(localStorage.getItem("siesta.notify") || "[]");

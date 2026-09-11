@@ -273,7 +273,7 @@ export function HomePage() {
   const slides = (rawSlides.length ? rawSlides : [{}]).map((b) => ({ ...HERO_DEFAULT, ...Object.fromEntries(Object.entries(b || {}).filter(([, v]) => String(v ?? "").trim() !== "")) }));
   const heroSlideHTML = (b, i) => {
     const photos = (Array.isArray(b.images) && b.images.length ? b.images : (b.image ? [b.image] : [])).filter((u) => typeof u === "string" && u).slice(0, 6);
-    const stack = (cls, alt) => photos.map((src, k) => `<img class="${cls}${k === 0 ? " on" : ""}" data-pi="${k}" src="${esc(imgVariant(src, 1200, 70))}" alt="${esc(alt)}"${cls === "hero-fg" && k > 0 ? ' aria-hidden="true"' : ""}${i === 0 && k === 0 && cls === "hero-fg" ? ' fetchpriority="high"' : ' loading="lazy"'} onerror="this.remove()" />`).join("");
+    const stack = (cls, alt) => photos.map((src, k) => `<img class="${cls}${k === 0 ? " on" : ""}" data-pi="${k}" src="${esc(imgVariant(src, 1200, 70))}" alt="${esc(alt)}"${cls === "hero-fg" && k > 0 ? ' aria-hidden="true"' : ""}${i === 0 && k === 0 && cls === "hero-fg" ? ' fetchpriority="high"' : ' loading="lazy"'} onload="this.classList.add('on');this.closest('.hero-art')?.classList.add('ld')" onerror="this.closest('.hero-art')?.classList.add('ld');this.remove()" />`).join("");
     return `
       <div class="hero-slide${i === 0 ? " active" : ""}" data-slide="${i}"${i === 0 ? "" : ' aria-hidden="true"'}>
         <div class="hero-copy">
@@ -291,7 +291,7 @@ export function HomePage() {
             <div><strong>Ships in 24 hrs</strong>Across India</div>
           </div>
         </div>
-        <div class="hero-art">${heroArt()}${stack("hero-bg", "")}${stack("hero-fg", b.title)}</div>
+        <div class="hero-art"${photos.length ? " data-photo" : ""}>${heroArt()}${stack("hero-bg", "")}${stack("hero-fg", b.title)}</div>
       </div>`;
   };
   const heroHTML = `
@@ -339,7 +339,7 @@ export function HomePage() {
         ${[["men", "Men", "Cut for him"], ["women", "Women", "Cut for her"], ["unisex", "Unisex", "Cut for everyone"]].map(([g, label, blurb], i) => {
           const n = ALL.filter((p) => p && p.gender === g).length;
           const photo = siteCollectionImage(g);
-          const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onerror="this.remove()" />` : ""}</span>`;
+          const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onload="this.classList.add('on')" onerror="this.remove()" />` : ""}</span>`;
           return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
         }).join("")}
       </div>
@@ -512,7 +512,7 @@ export function ProductPage(id) {
   const recent = getRecent().filter((x) => x.id !== p.id).slice(0, 4);
   const photos = p.images || [];
   const thumbsHTML = photos.length
-    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(imgVariant(src, 200, 60))}" alt="" style="width:100%;height:100%;object-fit:cover" /></button>`).join("")
+    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(imgVariant(src, 200, 60))}" alt="" style="width:100%;height:100%;object-fit:cover" onload="this.classList.add('on')" onerror="this.remove()" /></button>`).join("")
     : p.colors.map((c, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View in ${esc(c.name)}"><span aria-hidden="true">${productArt(p, i)}</span></button>`).join("");
   setTimeout(() => {
     const root = document.getElementById("app");

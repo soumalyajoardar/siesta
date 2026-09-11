@@ -374,7 +374,8 @@ app.post("/api/orders", async (req, res) => {
 // Public tracking by order number.
 app.get("/api/orders/:orderNo", async (req, res) => {
   try {
-    const o = (await getOrders()).find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
+    const orders = await withAutomation(await getOrders());
+    const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
     if (!o) return res.status(404).json({ error: "Order not found." });
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not load the order." }); }
@@ -451,7 +452,8 @@ app.get("/api/auth/me", requireCustomer, (req, res) => res.json({
 // My order history (server is the source of truth when logged in).
 app.get("/api/auth/orders", requireCustomer, async (req, res) => {
   try {
-    res.json((await getOrders()).filter((o) => o.customerId && o.customerId === req.customer.id));
+    const orders = await withAutomation(await getOrders());
+    res.json(orders.filter((o) => o.customerId && o.customerId === req.customer.id));
   } catch (e) { res.status(500).json({ error: "Could not load your orders." }); }
 });
 
@@ -764,33 +766,96 @@ app.delete("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not delete the coupon." }); }
 });
 
+/* ---------------- delivery automation (standard orders, one stage per day) ---------------- */
+// Admin enables it per order; the scheduler then advances confirmed →
+// processing (day 1) → packed (day 2) → shipped (day 3) → out_for_delivery
+// (day 4) → delivered (day 5), each at a random time of day. Manual status
+// changes stay locked while automation runs.
+const AUTO_NEXT = { confirmed: "processing", processing: "packed", packed: "shipped", shipped: "out_for_delivery", out_for_delivery: "delivered" };
+const AUTO_NOTES = {
+  processing: "Picked and quality-checked — advanced by Siesta delivery automation.",
+  packed: "Packed, sealed and labelled — advanced by Siesta delivery automation.",
+  shipped: "Handed to the delivery partner — advanced by Siesta delivery automation.",
+  out_for_delivery: "Out for delivery — advanced by Siesta delivery automation.",
+  delivered: "Delivered — signed off by Siesta delivery automation.",
+};
+// Random clock time on the next calendar day (09:00–20:59).
+function randomDayTime(from) {
+  const d = new Date(from);
+  d.setDate(d.getDate() + 1);
+  d.setHours(9 + Math.floor(Math.random() * 12), Math.floor(Math.random() * 60), Math.floor(Math.random() * 60), 0);
+  return d;
+}
+function autoRemaining(fromStatus) {
+  let n = 0, s = fromStatus;
+  while (AUTO_NEXT[s]) { s = AUTO_NEXT[s]; n++; }
+  return n;
+}
+// Advance every automated order whose next run time has passed. Returns true
+// when anything changed (caller persists). Runs from the minute ticker and
+// lazily on order reads, so progress never stalls (incl. serverless).
+function applyAutomation(orders, now) {
+  let changed = false;
+  for (const o of orders) {
+    const auto = o.auto;
+    if (!auto || !auto.active) continue;
+    if (o.status === "cancelled" || o.status === "delivered") { auto.active = false; changed = true; continue; }
+    let guard = 0;
+    while (auto.active && auto.nextAt && new Date(auto.nextAt).getTime() <= now.getTime() && guard++ < 8) {
+      const next = AUTO_NEXT[o.status];
+      if (!next) { auto.active = false; changed = true; break; }
+      o.status = next;
+      o.timeline.push({ stage: next, at: now.toISOString(), note: AUTO_NOTES[next] });
+      if (next === "delivered") auto.active = false;
+      // Next run is always a fresh day out (never chained from a stale
+      // cursor), so overdue orders catch up one honest stage at a time.
+      else auto.nextAt = randomDayTime(now).toISOString();
+      changed = true;
+    }
+  }
+  return changed;
+}
+async function withAutomation(orders) {
+  try { if (applyAutomation(orders, new Date())) await store.saveOrders(orders); }
+  catch { /* automation must never break reads */ }
+  return orders;
+}
+
 /* ---------------- admin: orders ---------------- */
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
-  try { res.json(await getOrders()); }
+  try { res.json(await withAutomation(await getOrders())); }
   catch (e) { res.status(500).json({ error: "Could not load orders." }); }
+});
+app.post("/api/admin/orders/:orderNo/automate", requireAdmin, async (req, res) => {
+  try {
+    const orders = await getOrders();
+    const o = orders.find((x) => x.orderNo === req.params.orderNo);
+    if (!o) return res.status(404).json({ error: "Order not found." });
+    if (o.express) return res.status(400).json({ error: "Automation is available for standard deliveries only." });
+    if (o.status === "delivered" || o.status === "cancelled") return res.status(400).json({ error: "This order is already closed." });
+    if (o.auto && o.auto.active) return res.status(400).json({ error: "Automation is already running on this order." });
+    const remaining = autoRemaining(o.status);
+    if (!remaining) return res.status(400).json({ error: "Nothing left to automate." });
+    const now = new Date();
+    const deliverAt = new Date(now);
+    deliverAt.setDate(deliverAt.getDate() + remaining);
+    o.auto = { active: true, startedAt: now.toISOString(), nextAt: randomDayTime(now).toISOString(), deliverAt: deliverAt.toISOString() };
+    o.timeline.push({ stage: o.status, at: now.toISOString(), note: `Delivery automation enabled — advancing one stage a day, arriving ${deliverAt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}.` });
+    await store.saveOrders(orders);
+    res.json(o);
+  } catch (e) { res.status(500).json({ error: "Could not enable automation." }); }
 });
 app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
   try {
     const orders = await getOrders();
     const o = orders.find((x) => x.orderNo === req.params.orderNo);
     if (!o) return res.status(404).json({ error: "Order not found." });
-    const { status, express } = req.body || {};
-    if (status === undefined && express === undefined) return res.status(400).json({ error: "Nothing to update." });
-    if (status !== undefined) {
-      if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
-      o.status = status;
-      o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
-    }
-    if (express !== undefined) {
-      if (express !== null && !["today", "tomorrow"].includes(express)) return res.status(400).json({ error: "Express option must be today, tomorrow or off." });
-      if (express) {
-        o.express = { option: express, at: new Date().toISOString(), by: "admin" };
-        o.timeline.push({ stage: o.status, at: new Date().toISOString(), note: `Marked for express delivery — arriving ${express}.` });
-      } else {
-        delete o.express;
-        o.timeline.push({ stage: o.status, at: new Date().toISOString(), note: "Express delivery removed." });
-      }
-    }
+    const { status } = req.body || {};
+    if (status === undefined) return res.status(400).json({ error: "Nothing to update." });
+    if (o.auto && o.auto.active) return res.status(400).json({ error: "Automation is running on this order — manual changes are locked." });
+    if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
+    o.status = status;
+    o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
     await store.saveOrders(orders);
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not update the order." }); }
@@ -940,6 +1005,16 @@ async function start() {
     console.log(`\n  SIESTA running [${store.backend()}] →  local:  http://localhost:${PORT}  (admin: /admin)`);
     console.log(`                                    phone:   http://${ip}:${PORT}  (same Wi-Fi)\n`);
   });
+  // Delivery-automation ticker (long-running server only — serverless
+  // deployments rely on the lazy apply in the order read paths above).
+  const tickAutomation = async () => {
+    try {
+      const orders = await getOrders();
+      if (applyAutomation(orders, new Date())) await store.saveOrders(orders);
+    } catch (e) { console.error("[automation]", e.message); }
+  };
+  tickAutomation();
+  setInterval(tickAutomation, 60 * 1000);
 }
 
 // `npm start` boots a server; Vercel imports { app } as a function instead.

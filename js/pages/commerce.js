@@ -320,11 +320,13 @@ export function SuccessPage(orderNo) {
 }
 
 function successHTML(o) {
+  const di = S.deliveryInfo(o);
   return `<div class="card" style="text-align:center">
     <div class="success-check" aria-hidden="true"><svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="33"/><path d="M23 37.5 32 46l17-19"/></svg></div>
     <span class="eyebrow">Cash on Delivery</span>
     <h1 class="h-display" style="font-size:2.2rem">Order confirmed.</h1>
     <p class="muted">Thanks ${esc(o.address.name.split(" ")[0])} — please keep <strong style="color:var(--ink)">${inr(o.amounts.total)}</strong> ready on delivery.</p>
+    ${di && di.detail ? `<p class="eta-line" style="justify-content:center"><strong>${esc(di.headline)}</strong><span class="muted"> · ${esc(di.detail)}</span></p>` : ""}
     <div class="summary-row"><span>Order number</span><strong>${esc(o.orderNo)}</strong></div>
     <div class="summary-row"><span>Order date</span><span>${new Date(o.createdAt).toLocaleString("en-IN")}</span></div>
     <div class="summary-row"><span>Payment</span><span>Cash on Delivery</span></div>
@@ -420,7 +422,7 @@ function trackHTML(o) {
     const p = productById(i.id);
     const src = p && p.images && p.images[0];
     const inner = src
-      ? `<img class="t-item-thumb" src="${esc(imgVariant(src, 200, 60))}" alt="" loading="lazy" onerror="this.remove()" />`
+      ? `<img class="t-item-thumb" src="${esc(imgVariant(src, 200, 60))}" alt="" loading="lazy" onload="this.classList.add('on')" onerror="this.remove()" />`
       : p
         ? `<span class="t-item-thumb t-item-art" aria-hidden="true">${productArt(p)}</span>`
         : `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
@@ -443,27 +445,51 @@ function trackHTML(o) {
       <a class="btn btn-dark btn-sm" href="/shop">Shop Again</a></div>${aside}</div>`;
   }
 
+  const info = S.deliveryInfo(o);
   const pct = Math.round(((o.stageIndex ?? 0) / (stages.length - 1)) * 100);
   const stepNo = Math.min((o.stageIndex ?? 0) + 1, stages.length);
-  const etaDays = Math.max(0, Math.ceil((new Date(o.createdAt).getTime() + 5 * 86400000 - Date.now()) / 86400000));
+  const autoOn = Boolean(o.auto && o.auto.active);
+  const curIdx = stages.indexOf(o.status);
+  const schedDate = (i) => {
+    if (!autoOn || !o.auto.nextAt || i <= curIdx) return "";
+    const d = new Date(o.auto.nextAt);
+    d.setDate(d.getDate() + (i - curIdx - 1));
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  };
+  const stageIcon = (s) => {
+    const P = {
+      confirmed: '<circle cx="12" cy="12" r="8.5"/><path d="M8.6 12.4l2.4 2.4 4.4-5"/>',
+      processing: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>',
+      packed: '<rect x="4" y="7.5" width="16" height="12.5" rx="2"/><path d="M4 11.5h16M12 7.5v12.5M9 4.5h6"/>',
+      shipped: '<rect x="1.5" y="5.5" width="13" height="9.5" rx="1"/><path d="M14.5 9.5h3.4l3.6 3.6V15h-7.1"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17.2" cy="17.5" r="1.8"/>',
+      out_for_delivery: '<path d="M12 21s-6.5-5.6-6.5-10.5A6.5 6.5 0 0 1 12 4a6.5 6.5 0 0 1 6.5 6.5C18.5 15.4 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.2"/>',
+      delivered: '<path d="M4 12.5 12 5l8 7.5"/><path d="M6.5 11v9h11v-9"/>',
+    };
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[s] || ""}</svg>`;
+  };
   const isExpress = Boolean(o.express) && o.status !== "delivered";
-  const etaText = o.status === "delivered"
-    ? "Delivered — enjoy!"
-    : isExpress
-      ? `Arriving ${o.express.option === "tomorrow" ? "Tomorrow" : "Today"}`
-      : etaDays <= 0 ? "Arriving today" : `Arriving in ${etaDays} day${etaDays === 1 ? "" : "s"}`;
   return `${crumbs}
   <div class="split"><div class="card track-card">
+      <div class="eta-banner kind-${info.kind}">
+        <span class="eta-ic" aria-hidden="true">${o.status === "delivered"
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10.5h16M8.5 3.5v4M15.5 3.5v4"/></svg>'}</span>
+        <div class="eta-tx"><strong>${esc(info.headline)}</strong><span>${esc(info.detail)}</span></div>
+        ${autoOn ? '<span class="pill ok">Automated</span>' : ""}
+        ${isExpress ? '<span class="pill">Express</span>' : ""}
+      </div>
       <div class="track-hero">
         <div>
-          <h1 class="h-display" style="font-size:1.8rem;margin:.2rem 0 .3rem">${esc(etaText)}</h1>
           <p class="muted track-meta">Step ${stepNo} of ${stages.length} · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${inr(o.amounts.total)} (COD)</p>
-          ${isExpress && o.amounts.shipping !== 150 ? `<div class="express-note"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg> Express delivery</h3><p>Your order has been manually upgraded to express delivery.</p></div>` : ""}
+          ${isExpress ? `<div class="express-note"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/></svg> Express delivery</h3><p>Priority handling — arriving within 1–2 days of ordering.</p></div>` : ""}
         </div>
-        <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true">📋</span></button>
+        <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></span></button>
       </div>
-      <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
-    <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
+      <div class="tl-railwrap">
+        <div class="tl-rail" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress, ${pct} percent"><span class="tl-fill" style="width:${pct}%"></span><span class="tl-truck" style="left:${pct}%" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="5.5" width="13" height="9.5" rx="1"/><path d="M14.5 9.5h3.4l3.6 3.6V15h-7.1"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17.2" cy="17.5" r="1.8"/></svg></span></div>
+        <div class="tl-scale" aria-hidden="true"><span>Ordered</span><span>${info.date ? "Estimated " + new Date(info.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""}</span></div>
+      </div>
+    <ol class="timeline lively" style="--fill:${pct}%">${stages.map((s, i) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; const sched = !done ? schedDate(i) : ""; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot dot-ic" aria-hidden="true">${stageIcon(s)}</span><div class="t-main"><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : sched ? `<span class="t-chip">Scheduled · ${esc(sched)}</span>` : `<div class="t-sub">Pending</div>`}</div></li>`; }).join("")}</ol>
     ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review Product</button>`).join("")}</div></div>` : ""}
     <p class="muted" style="font-size:.82rem">${o._remote ? "Live status from the Siesta store — updated at every step from packing to delivery." : "Status reflects Siesta's order system on this device. Live courier scans will appear here once a delivery partner is connected."}</p></div>
   ${aside}</div>`;
