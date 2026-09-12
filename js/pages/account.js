@@ -229,7 +229,7 @@ const notice = "";
 const prose = (title, body) => { setTitle(title + " — Siesta", title + " · Siesta fashion store."); return `<div class="page"><div class="prose"><h1>${esc(title)}</h1>${body}</div></div>`; };
 
 export const StaticPages = {
-  about: () => prose("About Siesta", `<p>Siesta is a small Indian fashion label focused on considered everyday clothing — heavyweight T-shirts, honest denim, brushed fleece and outerwear built for real life. We design in limited runs, publish full fabric details, and price fairly without inflated “was” prices.</p><h2>What we won't do</h2><ul><li>No fake reviews, ratings, testimonials or customer counts — every published review comes from a verified delivered purchase, one per order.</li><li>No fake trust badges, awards or payment-partner logos.</li><li>No copyrighted brand imagery — all visuals here are original illustrations.</li></ul>`),
+  about: () => prose("About Siesta", `<p>Siesta is a small Indian fashion label focused on considered everyday clothing — heavyweight T-shirts, honest denim, brushed fleece and outerwear built for real life. We design in limited runs, publish full fabric details, and price fairly without inflated “was” prices.</p><p>Founded and led by <strong>Soumalya Joardar</strong>, CEO of Siesta India.</p><h2>What we won't do</h2><ul><li>No fake reviews, ratings, testimonials or customer counts — every published review comes from a verified delivered purchase, one per order.</li><li>No fake trust badges, awards or payment-partner logos.</li><li>No copyrighted brand imagery — all visuals here are original illustrations.</li></ul>`),
   contact: () => {
     setTitle("Contact Us — Siesta", "Reach Siesta support.");
     setTimeout(() => {
@@ -247,7 +247,7 @@ export const StaticPages = {
           const r = await fetch("/api/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email: String(v.email).trim(), message: String(v.message).trim() }) });
           const data = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(data.error || "Could not send message.");
-          toast("Thanks — your message has been sent to our team.");
+          toast("Our system will connect you to a live representative shortly!");
           e.target.reset();
         } catch (err) { toast(err.message, "error"); }
         finally { btn.disabled = false; }
