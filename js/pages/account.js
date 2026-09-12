@@ -111,8 +111,16 @@ export function AccountPage(tab = "overview") {
     wireAccount(tab, u);
   });
   return `<div class="page"><span class="eyebrow" id="acctHello">My account</span><h1 class="h-display" style="font-size:2rem">My account</h1>
-  <div class="acct"><nav class="acct-nav" aria-label="Account sections">${NAV.map(([id, l]) => `<a href="/account/${id}" ${tab === id ? 'aria-current="page"' : ""}>${l}</a>`).join("")}<a href="/track">Track Order</a><a href="/wishlist">Wishlist</a><button class="link-btn" id="logoutBtn" style="text-align:left;padding:.65rem .85rem">Log out</button></nav>
-  <div id="acctMain"><div class="card"><div class="skel" style="height:120px"></div></div></div></div></div>`;
+    <div class="acct">
+      <nav class="acct-nav" style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem;position:sticky;top:calc(var(--header-h) + 12px)">
+        ${NAV.map(([id, l]) => `<a href="/account/${id}" data-link ${tab === id ? 'aria-current="page"' : ""}>${l}</a>`).join("")}
+        <a href="/track" data-link>Track Order</a>
+        <a href="/wishlist" data-link>Wishlist</a>
+        <button class="link-btn" id="logoutBtn" style="width:100%;text-align:left;padding:.65rem .85rem;margin-top:.4rem;color:var(--danger);font-weight:600;display:block">Log out</button>
+      </nav>
+      <div id="acctMain"><div class="card"><div class="skel" style="height:120px"></div></div></div>
+    </div>
+  </div>`;
 }
 
 function wireAccount(tab, u) {
@@ -122,8 +130,15 @@ function wireAccount(tab, u) {
   serverMyOrders().then(async (list) => {
     if (!list || !document.getElementById("acctMain")) return;
     const known = new Set(S.getOrders().map((x) => x.orderNo));
+    let pruned = false;
+    for (const o of S.getOrders()) {
+      if (o._remote && !list.some((x) => x.orderNo === o.orderNo)) {
+        S.removeOrderLocal(o.orderNo);
+        pruned = true;
+      }
+    }
     for (const o of list) await mirrorOrder(o);
-    if (S.getOrders().some((x) => !known.has(x.orderNo))) wireAccount(tab, u);
+    if (pruned || S.getOrders().some((x) => !known.has(x.orderNo))) wireAccount(tab, u);
   }).catch(() => {});
   const orders = S.getOrders().map(S.orderWithProgress);
   if (tab === "overview") {
@@ -134,7 +149,7 @@ function wireAccount(tab, u) {
       <div class="card" style="margin-top:1rem"><h3 style="margin-top:0">Latest order</h3>${orders[0] ? `<div class="summary-row"><span><strong>${esc(orders[0].orderNo)}</strong> · ${esc(orders[0].status.replace(/_/g, " "))}</span><a class="link-btn" href="/track/${esc(orders[0].orderNo)}">Track →</a></div>` : `<p class="muted">No orders yet. <a href="/shop">Start shopping</a>.</p>`}</div>`;
   } else if (tab === "orders") {
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => { const di = S.deliveryInfo(o); return `<div class="order-card"><div class="order-top"><div><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span>${di && di.detail ? `<br/><span class="eta-line">${esc(di.headline)}${di.date && o.status !== "delivered" && o.status !== "cancelled" ? " · " + esc(new Date(di.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })) : ""}</span>` : ""}</div><span class="pill ${o.status === "delivered" ? "ok" : o.status === "cancelled" ? "" : "warn"}">${esc(o.status.replace(/_/g, " "))}</span></div>
-      <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}${o.status === "delivered" ? `<a class="link-btn" href="/invoice/${esc(o.orderNo)}" target="_blank">Download Invoice</a>` : ""}</div>
+      <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}</div>
       <div data-dwrap="${esc(o.orderNo)}" hidden style="margin-top:.6rem">${o.items.map((i, k) => { const live = S.productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="summary-row"><span>${nm} × ${i.qty} (${esc(i.size)})</span><span>${o.status === "delivered" ? `<button class="link-btn" data-rev="${esc(o.orderNo)}::${k}">Review</button> ` : ""}${inr(i.price * i.qty)}</span></div>`; }).join("")}</div></div>`; }).join("") : `<div class="empty"><h2>No orders yet</h2><p class="muted">Orders placed on this device will appear here.</p><a class="btn btn-dark" href="/shop">Start Shopping</a></div>`}</div>`;
     main.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => { const w = main.querySelector(`[data-dwrap="${b.dataset.detail}"]`); w.hidden = !w.hidden; }));
     main.querySelectorAll("[data-rev]").forEach((b) => (b.onclick = () => {

@@ -6,7 +6,7 @@
   const esc = (s = "") => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
   const TOKEN_KEY = "siesta.admin.token";
-  const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+  const getToken = () => sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
 
   function toast(msg, type = "success") {
     const el = document.createElement("div");
@@ -61,6 +61,7 @@
   /* ---------- auth gate ---------- */
   function showLogin() {
     sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     $("#loginView").hidden = false;
     $("#dashView").hidden = true;
   }
@@ -76,11 +77,12 @@
     try {
       const r = await fetch("/api/admin/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: fd.get("username"), password: fd.get("password") }),
+        body: JSON.stringify({ username: fd.get("username"), password: fd.get("password"), remember: !!fd.get("remember") }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "Login failed.");
-      sessionStorage.setItem(TOKEN_KEY, data.token);
+      if (fd.get("remember")) localStorage.setItem(TOKEN_KEY, data.token);
+      else sessionStorage.setItem(TOKEN_KEY, data.token);
       toast("Welcome back.");
       showDash();
     } catch (err) { $("#loginErr").textContent = err.message; }
@@ -185,6 +187,7 @@
           <div class="img-grid" id="imgGrid"></div>
           <label class="drop">Click or drop images here to upload (JPG/PNG/WebP/GIF/AVIF, ≤5MB each)<input type="file" id="imgInput" accept="image/*" multiple /></label>
           <div style="display:flex;gap:.5rem;margin-top:.6rem"><input class="input" id="imgUrl" placeholder="…or paste a folder URL like /images/tee-front.webp" style="flex:1" /><button type="button" class="btn btn-light btn-sm" id="imgUrlAdd">Add</button></div>
+          <div style="margin-top:.6rem;text-align:right;"><button type="button" class="btn btn-light btn-sm" id="genPromptBtn">✨ Copy AI Image Prompt</button></div>
         </div>
         <p class="err" id="pErr"></p>
         <button class="btn btn-dark btn-block" type="submit">${id ? "Save Changes" : "Create Product"}</button>
@@ -197,6 +200,47 @@
       $$("#imgGrid [data-rm]").forEach((b) => (b.onclick = () => { images.splice(Number(b.dataset.rm), 1); drawImgs(); }));
     };
     drawImgs();
+    const genBtn = $("#genPromptBtn");
+    if (genBtn) {
+      genBtn.addEventListener("click", () => {
+        const form = $("#pForm");
+        if (!form) return;
+        const fd = new FormData(form);
+          const name = fd.get("name") || "stylish clothing";
+          let gender = fd.get("gender") || "unisex";
+          if (gender === "unisex") gender = "male or female";
+          if (gender === "men") gender = "male";
+          if (gender === "women") gender = "female";
+          const desc = fd.get("desc") || "";
+          const colorLines = String(fd.get("colors") || "").split("\n").map(x => x.split(":")[0].trim()).filter(Boolean).join(" and ");
+          const colors = colorLines ? ` in ${colorLines}` : "";
+          const material = fd.get("material") ? ` made of ${fd.get("material")}` : "";
+          const prompt = `Create one hyper-realistic professional fashion photograph of an Indian ${gender} adult model posing naturally for a premium commercial clothing campaign, wearing ${name}${colors}${material}. ${desc ? "\\n\\n" + desc : ""}
+
+The image should look like a genuine photograph from a high-end professional fashion/e-commerce studio shoot, captured with a professional full-frame camera.
+
+The model should have a natural, confident, relaxed pose that clearly showcases the fit, silhouette, fabric, sleeves, collar, and overall appearance of the clothing. Keep the pose stylish but understated and suitable for a premium clothing brand.
+
+Use a slightly close-up portrait composition, 4:5 aspect ratio, with the clothing filling most of the frame while maintaining comfortable margins.
+
+Background: seamless warm off-white studio background, approximately #F1ECE3 to #EFE9DD. Clean, minimal, and distraction-free.
+
+Lighting: soft, diffused, daylight-balanced professional studio lighting with gentle fill from both sides. Natural skin tones, realistic fabric texture, accurate clothing color, and very soft shadows.
+
+The clothing must look physically real, with authentic fabric texture, stitching, folds, seams, and natural draping. Accurately preserve the color without changing its hue or saturation.
+
+Add a subtle “Siesta.” logo naturally onto the clothing as if it is genuinely printed or embroidered on the garment.
+
+No props, no furniture, no scenery, no additional people, no promotional graphics, no sale badges, no watermark, no text other than the Siesta logo, and no artificial/CGI appearance.
+
+Style: premium, minimal, modern, photorealistic, sophisticated commercial fashion photography.`;
+          navigator.clipboard.writeText(prompt).then(() => {
+          toast("Prompt copied to clipboard!");
+        }).catch(() => {
+          window.prompt("Copy this prompt:", prompt);
+        });
+      });
+    }
     $("#imgInput").addEventListener("change", async (e) => {
       if (!e.target.files.length) return;
       try {
@@ -662,30 +706,22 @@
           return o.status === f;
         });
         $("#oCount").textContent = `${list.length} orders`;
-          $("#olist").innerHTML = list.map((o) => {
-            const autoOn = Boolean(o.auto && o.auto.active);
-            const canAuto = !o.express && !autoOn && ["confirmed", "processing", "packed", "shipped", "out_for_delivery"].includes(o.status);
-            const autoEta = o.auto && o.auto.deliverAt ? new Date(o.auto.deliverAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
+            $("#olist").innerHTML = list.map((o) => {
+            let expressOpt = o.express?.option;
+            if (expressOpt === "tomorrow" && new Date(o.express?.at || o.createdAt).toLocaleDateString("en-IN") !== new Date().toLocaleDateString("en-IN")) {
+              expressOpt = "today";
+            }
             return `
             <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
-              <div><strong>${esc(o.orderNo)}</strong>${o.express ? ' <span class="pill">Express</span>' : ""}${autoOn ? ` <span class="pill ok">Auto · by ${esc(autoEta)}</span>` : ""}<br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
+              <div><strong>${esc(o.orderNo)}</strong>${o.express ? ' <span class="pill">Express</span>' : ""}<br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
               <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
               <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
-              <select class="status" data-os="${esc(o.orderNo)}" ${autoOn ? "disabled aria-disabled='true' title='Automation is running — manual changes are locked'" : ""}>${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
-              ${canAuto ? `<button class="btn btn-dark btn-sm" data-auto="${esc(o.orderNo)}" style="margin-top:.4rem">Automate</button>` : ""}
+              <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
               <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
             </div></div>`}).join("") || "<p class='muted'>No orders in this state.</p>";
         $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
           try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
           catch (e) { toast(e.message, "error"); vOrders(); }
-        }));
-        $$("#olist [data-auto]").forEach((b) => (b.onclick = async () => {
-          if (!confirm(`Automate delivery for order ${b.dataset.auto}? It will advance one stage a day until delivered, and manual changes will lock.`)) return;
-          try {
-            await api("/api/admin/orders/" + encodeURIComponent(b.dataset.auto) + "/automate", { method: "POST" });
-            toast("Automation enabled — one stage a day.");
-            vOrders();
-          } catch (e) { toast(e.message, "error"); }
         }));
         $$("#olist [data-odel]").forEach((b) => (b.onclick = async () => {
           if (!confirm(`Permanently delete order ${b.dataset.odel}? This cannot be undone.`)) return;
@@ -789,6 +825,7 @@
         <div class="field"><label>Flat shipping fee (₹)</label><input class="input" name="shipFlat" type="number" value="${s.shipFlat}" /></div>
         <div class="field"><label>Max COD order (₹)</label><input class="input" name="codMaxOrder" type="number" value="${s.codMaxOrder}" /></div>
         <div class="field"><label>Announcement bar</label><input class="input" name="announcement" value="${esc(s.announcement || "")}" /></div>
+        <div class="field"><label>Active Event Preset</label><select class="input" name="eventPreset"><option value="" ${!s.eventPreset ? 'selected' : ''}>None (Default)</option><option value="christmas" ${s.eventPreset === 'christmas' ? 'selected' : ''}>Christmas Theme</option></select></div>
         <div><br /><button class="btn btn-dark btn-sm" type="submit">Save Settings</button></div>
       </form></div>
       <div class="card"><h3>Admin password</h3><p class="muted small">Stored scrypt-hashed in the database (never plaintext). Changing it logs out other sessions.</p>

@@ -21,6 +21,12 @@ async function render() {
   document.getElementById("pdp-jsonld")?.remove(); // product schema belongs to PDP only
   const { segs, query } = parsePath();
   closeMobileNav();
+  const isHome = (location.pathname === "/" || location.pathname === "/index.html");
+  const ab = document.querySelector(".announce-bar");
+  if (ab) ab.style.display = isHome ? "" : "none";
+  const sSettings = siteSettings();
+  if (sSettings.eventPreset === "christmas") document.body.classList.add("theme-christmas");
+  else document.body.classList.remove("theme-christmas");
   // Maintenance mode: the whole storefront becomes one page. The cached flag
   // paints instantly (no flash of the store); a fresh fetch then confirms it.
   // (Admin dashboard is a separate page and always stays reachable.)

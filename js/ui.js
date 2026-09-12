@@ -105,6 +105,7 @@ export function openReviewModal(orderNo, item) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "Could not save your review.");
+      localStorage.setItem(`reviewed_${orderNo}_${item.id}`, "1");
       close();
       toast("Thanks! Your review is now public.");
       document.dispatchEvent(new CustomEvent("siesta:reroute"));

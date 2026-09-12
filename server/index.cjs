@@ -543,9 +543,9 @@ app.post("/api/admin/login", async (req, res) => {
   } catch (e) {
     return res.status(503).json({ error: e.message });
   }
-  const { username, password } = req.body || {};
+  const { username, password, remember } = req.body || {};
   if (username === "admin" && (await verify(password))) {
-    return res.json({ token: await issueToken() });
+    return res.json({ token: await issueToken(Boolean(remember)) });
   }
   recordFailure(ip);
   res.status(401).json({ error: "Invalid username or password." });
@@ -766,50 +766,45 @@ app.delete("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not delete the coupon." }); }
 });
 
-/* ---------------- delivery automation (standard orders, one stage per day) ---------------- */
-// Admin enables it per order; the scheduler then advances confirmed →
-// processing (day 1) → packed (day 2) → shipped (day 3) → out_for_delivery
-// (day 4) → delivered (day 5), each at a random time of day. Manual status
-// changes stay locked while automation runs.
-const AUTO_NEXT = { confirmed: "processing", processing: "packed", packed: "shipped", shipped: "out_for_delivery", out_for_delivery: "delivered" };
-const AUTO_NOTES = {
-  processing: "Picked and quality-checked — advanced by Siesta delivery automation.",
-  packed: "Packed, sealed and labelled — advanced by Siesta delivery automation.",
-  shipped: "Handed to the delivery partner — advanced by Siesta delivery automation.",
-  out_for_delivery: "Out for delivery — advanced by Siesta delivery automation.",
-  delivered: "Delivered — signed off by Siesta delivery automation.",
-};
-// Random clock time on the next calendar day (09:00–20:59).
-function randomDayTime(from) {
-  const d = new Date(from);
-  d.setDate(d.getDate() + 1);
-  d.setHours(9 + Math.floor(Math.random() * 12), Math.floor(Math.random() * 60), Math.floor(Math.random() * 60), 0);
-  return d;
-}
-function autoRemaining(fromStatus) {
-  let n = 0, s = fromStatus;
-  while (AUTO_NEXT[s]) { s = AUTO_NEXT[s]; n++; }
-  return n;
-}
-// Advance every automated order whose next run time has passed. Returns true
-// when anything changed (caller persists). Runs from the minute ticker and
-// lazily on order reads, so progress never stalls (incl. serverless).
+/* ---------------- delivery automation (chronological, every order) ---------------- */
 function applyAutomation(orders, now) {
   let changed = false;
+  const STAGES_ARR = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
   for (const o of orders) {
-    const auto = o.auto;
-    if (!auto || !auto.active) continue;
-    if (o.status === "cancelled" || o.status === "delivered") { auto.active = false; changed = true; continue; }
-    let guard = 0;
-    while (auto.active && auto.nextAt && new Date(auto.nextAt).getTime() <= now.getTime() && guard++ < 8) {
-      const next = AUTO_NEXT[o.status];
-      if (!next) { auto.active = false; changed = true; break; }
-      o.status = next;
-      o.timeline.push({ stage: next, at: now.toISOString(), note: AUTO_NOTES[next] });
-      if (next === "delivered") auto.active = false;
-      // Next run is always a fresh day out (never chained from a stale
-      // cursor), so overdue orders catch up one honest stage at a time.
-      else auto.nextAt = randomDayTime(now).toISOString();
+    if (o.status === "cancelled" || o.status === "delivered") continue;
+    if (o.express) continue;
+    
+    const created = new Date(o.createdAt);
+    const day0 = new Date(created);
+    day0.setHours(0, 0, 0, 0);
+    const ms = 24 * 60 * 60 * 1000;
+    
+    const thresholds = [
+      { status: "processing", at: new Date(day0.getTime() + 1 * ms).setHours(17, 0, 0, 0) },
+      { status: "packed", at: new Date(day0.getTime() + 2 * ms).setHours(17, 0, 0, 0) },
+      { status: "shipped", at: new Date(day0.getTime() + 3 * ms).setHours(17, 0, 0, 0) },
+      { status: "out_for_delivery", at: new Date(day0.getTime() + 4 * ms).setHours(10, 0, 0, 0) },
+      { status: "delivered", at: new Date(day0.getTime() + 4 * ms).setHours(17, 0, 0, 0) }
+    ];
+    
+    const currIdx = STAGES_ARR.indexOf(o.status);
+    let targetIdx = currIdx;
+    for (let i = 0; i < thresholds.length; i++) {
+      if (now.getTime() >= thresholds[i].at) {
+        const tIdx = STAGES_ARR.indexOf(thresholds[i].status);
+        if (tIdx > targetIdx) targetIdx = tIdx;
+      }
+    }
+    
+    if (targetIdx > currIdx) {
+      for (let i = currIdx + 1; i <= targetIdx; i++) {
+        const next = STAGES_ARR[i];
+        const th = thresholds.find((t) => t.status === next);
+        o.status = next;
+        // Apply historical exact timestamps if we're catching up, so timeline looks perfectly scheduled
+        const runAt = Math.min(now.getTime(), th.at);
+        o.timeline.push({ stage: next, at: new Date(runAt).toISOString(), note: STAGE_NOTES[next] });
+      }
       changed = true;
     }
   }
@@ -825,25 +820,6 @@ async function withAutomation(orders) {
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   try { res.json(await withAutomation(await getOrders())); }
   catch (e) { res.status(500).json({ error: "Could not load orders." }); }
-});
-app.post("/api/admin/orders/:orderNo/automate", requireAdmin, async (req, res) => {
-  try {
-    const orders = await getOrders();
-    const o = orders.find((x) => x.orderNo === req.params.orderNo);
-    if (!o) return res.status(404).json({ error: "Order not found." });
-    if (o.express) return res.status(400).json({ error: "Automation is available for standard deliveries only." });
-    if (o.status === "delivered" || o.status === "cancelled") return res.status(400).json({ error: "This order is already closed." });
-    if (o.auto && o.auto.active) return res.status(400).json({ error: "Automation is already running on this order." });
-    const remaining = autoRemaining(o.status);
-    if (!remaining) return res.status(400).json({ error: "Nothing left to automate." });
-    const now = new Date();
-    const deliverAt = new Date(now);
-    deliverAt.setDate(deliverAt.getDate() + remaining);
-    o.auto = { active: true, startedAt: now.toISOString(), nextAt: randomDayTime(now).toISOString(), deliverAt: deliverAt.toISOString() };
-    o.timeline.push({ stage: o.status, at: now.toISOString(), note: `Delivery automation enabled — advancing one stage a day, arriving ${deliverAt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}.` });
-    await store.saveOrders(orders);
-    res.json(o);
-  } catch (e) { res.status(500).json({ error: "Could not enable automation." }); }
 });
 app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
   try {

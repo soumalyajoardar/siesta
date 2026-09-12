@@ -39,17 +39,24 @@ export function cardHTML(p, i = 0) {
   const wished = getWish().includes(p.id);
   const stockCls = !inStock(p) ? "out" : lowStock(p) ? "low" : "in";
   const stockTxt = !inStock(p) ? "Out of stock" : lowStock(p) ? `Only ${p.stock} left` : "In stock";
-  return `<article class="p-card reveal" style="transition-delay:${Math.min(i * 40, 320)}ms">
+  
+  let starsHtml = '';
+  if (p.rating && p.rating.count > 0) {
+    starsHtml = `<div class="card-stars" aria-label="${p.rating.avg} out of 5 stars" style="margin-bottom:.3rem; display:flex; align-items:center; gap:.25rem; font-size:.8rem">${stars(p.rating.avg)} <span class="muted" style="font-size:.75rem; font-weight: 500">${p.rating.avg}</span></div>`;
+  }
+  
+  return `<article class="p-card reveal" style="transition-delay:${Math.min(i * 40, 320)}ms; display:flex; flex-direction:column; height:100%">
     <div class="p-media">
       <a href="/product/${p.id}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p, 0, { loading: i < 4 ? "eager" : "lazy" })}</a>
       ${hasAltVisual(p) ? `<span class="p-alt" aria-hidden="true">${productArt(p, 1)}</span>` : ""}
       <div class="p-badges">
-        ${off > 0 ? `<span class="badge sale">−${off}%</span>` : ""}
+        ${off > 0 ? `<span class="badge sale">↓${off}%</span>` : ""}
         ${p.isNew ? `<span class="badge new">New</span>` : ""}
       </div>
       <button class="quick-view" data-quick="${p.id}">Quick view</button>
     </div>
-    <div class="p-body">
+    <div class="p-body" style="display:flex; flex-direction:column; flex:1">
+      ${starsHtml}
       <span class="p-cat">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
       <div style="display:flex; justify-content:space-between; align-items:flex-start;">
         <a class="p-name" href="/product/${p.id}">${esc(p.name)}</a>
@@ -60,14 +67,29 @@ export function cardHTML(p, i = 0) {
       <span class="p-meta">${esc(p.colors.map((c) => c.name).join(" / "))} · ${esc(p.sizes.slice(0, 4).join(", "))}${p.sizes.length > 4 ? "+" : ""}</span>
       <div class="p-price"><span class="price">${inr(p.price)}</span>${p.mrp > p.price ? `<span class="mrp">${inr(p.mrp)}</span><span class="off">${off}% off</span>` : ""}</div>
       <span class="stock-note ${stockCls}">${stockTxt}</span>
-      <div class="p-actions">
-        ${inStock(p) ? `<button class="btn btn-dark" data-add="${p.id}">Add to Cart</button>` : `<button class="btn btn-dark" data-notify="${p.id}">Notify Me</button>`}
+      <div class="p-actions" style="margin-top:auto">
+        ${inStock(p) ? `<button class="btn btn-dark" data-add="${p.id}" style="width:100%">Add to Cart</button>` : `<button class="btn btn-dark" data-notify="${p.id}" style="width:100%">Notify Me</button>`}
       </div>
     </div>
   </article>`;
 }
 
 export function bindCards(root) {
+  root.querySelectorAll(".carousel-wrap").forEach((wrap) => {
+    const scroll = wrap.querySelector(".h-scroll");
+    const prev = wrap.querySelector(".prev");
+    const next = wrap.querySelector(".next");
+    if (!scroll || !prev || !next) return;
+    prev.onclick = () => {
+      if (scroll.scrollLeft <= 0) scroll.scrollTo({ left: scroll.scrollWidth, behavior: "smooth" });
+      else scroll.scrollBy({ left: -300, behavior: "smooth" });
+    };
+    next.onclick = () => {
+      if (scroll.scrollLeft >= scroll.scrollWidth - scroll.clientWidth - 5) scroll.scrollTo({ left: 0, behavior: "smooth" });
+      else scroll.scrollBy({ left: 300, behavior: "smooth" });
+    };
+  });
+  
   root.querySelectorAll("[data-wish]").forEach((b) => (b.onclick = (e) => {
     e.preventDefault();
     const added = toggleWish(b.dataset.wish);
@@ -199,7 +221,7 @@ function initHero(root, count) {
   };
   const play = () => {
     if (reduced || timer) return;
-    timer = setInterval(() => { if (!document.hidden) show(cur + 1); }, 5500);
+    timer = setInterval(() => { if (!document.hidden) show(cur + 1); }, 4000);
   };
   const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
   dots.forEach((d, i) => (d.onclick = () => { stop(); show(i); play(); }));
@@ -246,6 +268,7 @@ function setProductJsonLd(p, rating) {
 
 export function HomePage() {
   setTitle("Siesta — Modern Essentials & Streetwear", "Premium everyday fashion: tees, shirts, jackets, hoodies, denim and more.");
+  const isXmas = siteSettings().eventPreset === "christmas";
   const ALL = window.__catalogLoading ? Array.from({length: 8}) : catalog();
   const newArr = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].sort((a, b) => b.added.localeCompare(a.added)).slice(0, 8);
   const trend = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].sort((a, b) => b.popularity - a.popularity).slice(0, 8);
@@ -262,6 +285,32 @@ export function HomePage() {
   // Multiple rotating banners (Admin → Homepage); falls back to the single
   // legacy hero, then to built-in defaults. Empty fields inherit defaults.
   const rawSlides = (() => {
+    if (isXmas) return [
+      {
+        eyebrow: "The Holiday Collection",
+        title: "Gifts of uncompromising quality.",
+        message: "Discover our curated holiday selection. Premium fabrics, rich winter tones, and timeless fits designed for the season.",
+        badge: "Winter Essentials",
+        image: "/images/chr_hero.jpg",
+        link: "/shop?filter=new"
+      },
+      {
+        eyebrow: "Maison L'Hiver",
+        title: "Tailored for the season.",
+        message: "Step into the cold with confidence. Our latest winter coats are crafted with exceptional wool blends to keep you warm and sharp.",
+        badge: "Shop Coats",
+        image: "/images/chr_hero_2.jpg",
+        link: "/shop?category=jackets"
+      },
+      {
+        eyebrow: "Together for the Holidays",
+        title: "Celebrate in style.",
+        message: "Whether it's a grand party or an intimate dinner, dress for the moments that matter most with our premium holiday capsule.",
+        badge: "Holiday Capsule",
+        image: "/images/chr_hero_3.jpg",
+        link: "/shop?filter=new"
+      }
+    ];
     try {
       const s = JSON.parse(JSON.stringify(siteSettings()));
       if (Array.isArray(s.heroSlides) && s.heroSlides.length) return s.heroSlides;
@@ -321,6 +370,9 @@ export function HomePage() {
       newArr.slice(0, 4).forEach((p) => { if (p.images && p.images[0]) pre(imgVariant(p.images[0], 600, 70)); });
     } catch {}
   }, 0);
+  
+  const carouselHTML = (items) => `<div class="carousel-wrap"><button class="carousel-arrow prev" aria-label="Previous">←</button><div class="h-scroll" data-grid style="overflow-x:auto">${items.map(cardHTML).join("")}</div><button class="carousel-arrow next" aria-label="Next">→</button></div>`;
+
   return `<div class="page">
     ${heroHTML}
 
@@ -328,48 +380,49 @@ export function HomePage() {
       ${Array(2).fill(`<span>Complimentary shipping over ₹1,499</span><span>Cash on Delivery across India</span><span>7-day easy returns</span><span>New drops every week</span><span>Honest fabrics, fair prices</span>`).join("")}
     </div></div>
 
-    <section class="section" aria-labelledby="catH">
-      <div class="section-head"><div><span class="eyebrow">Departments</span><h2 id="catH">Shop by category</h2></div><a class="link-btn" href="/shop">View everything →</a></div>
-      <div class="cat-grid">${CATEGORIES.map((c) => `<a class="cat-card reveal" href="/shop?category=${c.id}">${catArt(c.id, siteCatImage(c.id))}<span class="cat-label"><span><strong>${esc(c.label)}</strong><br/><span>${esc(c.blurb)}</span></span><span aria-hidden="true">→</span></span></a>`).join("")}</div>
-    </section>
+    <div class="home-sections">
+      <section class="section" aria-labelledby="catH">
+        <div class="section-head"><div><span class="eyebrow">Departments</span><h2 id="catH">Shop by category</h2></div><a class="link-btn" href="/shop">View everything →</a></div>
+        <div class="cat-grid">${CATEGORIES.map((c) => `<a class="cat-card reveal" href="/shop?category=${c.id}">${catArt(c.id, siteCatImage(c.id))}<span class="cat-label"><span><strong>${esc(c.label)}</strong><br/><span>${esc(c.blurb)}</span></span><span aria-hidden="true">→</span></span></a>`).join("")}</div>
+      </section>
 
-    <section class="section" aria-labelledby="genH">
-      <div class="section-head"><div><span class="eyebrow">Collections</span><h2 id="genH">Shop by collection</h2><p>Three fits, one standard of quality.</p></div></div>
-      <div class="gender-grid">
-        ${[["men", "Men", "Cut for him"], ["women", "Women", "Cut for her"], ["unisex", "Unisex", "Cut for everyone"]].map(([g, label, blurb], i) => {
-          const n = ALL.filter((p) => p && p.gender === g).length;
-          const photo = siteCollectionImage(g);
-          const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onload="this.classList.add('on')" onerror="this.remove()" />` : ""}</span>`;
-          return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
-        }).join("")}
-      </div>
-    </section>
+      <section class="section" aria-labelledby="genH">
+        <div class="section-head"><div><span class="eyebrow">Collections</span><h2 id="genH">Shop by collection</h2><p>Three fits, one standard of quality.</p></div></div>
+        <div class="gender-grid">
+          ${[["men", "Men", "Cut for him"], ["women", "Women", "Cut for her"], ["unisex", "Unisex", "Cut for everyone"]].map(([g, label, blurb], i) => {
+            const n = ALL.filter((p) => p && p.gender === g).length;
+            const photo = siteCollectionImage(g);
+            const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onload="this.classList.add('on')" onerror="this.remove()" />` : ""}</span>`;
+            return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
+          }).join("")}
+        </div>
+      </section>
 
-    <section class="section" aria-labelledby="newH">
-      <div class="section-head"><div><span class="eyebrow">Just landed</span><h2 id="newH">New arrivals</h2></div><a class="link-btn" href="/shop?filter=new">Shop all new →</a></div>
-      <div class="product-grid" data-grid>${newArr.map(cardHTML).join("")}</div>
-    </section>
+      <section class="section" aria-labelledby="newH">
+        <div class="section-head"><div><span class="eyebrow">Just landed</span><h2 id="newH">New arrivals</h2></div><a class="link-btn" href="/shop?filter=new">Shop all new →</a></div>
+        ${carouselHTML(newArr)}
+      </section>
 
-    <section class="promo reveal" aria-label="Seasonal offer">
-      <div class="promo-copy">
-        <span class="eyebrow" style="color:#CFC7B4">Limited time</span>
-        <h2>The Layering Event — up to 35% off jackets & sweatshirts</h2>
-        <p style="color:#CFC7B4">Utility shells, truckers and brushed fleece. Use code <strong style="color:#fff">SIESTA15</strong> on orders over ₹1,999 at checkout.</p>
-        <div class="hero-cta" style="margin-top:1.2rem"><a class="btn btn-clay" href="/shop?filter=sale">Shop the Sale</a><a class="btn btn-light" href="/shop?category=jackets">Explore Jackets</a></div>
-      </div>
-      <div class="promo-art" aria-hidden="true"><svg viewBox="0 0 500 320" style="width:100%;height:100%"><rect width="500" height="320" fill="none"/><g transform="translate(60,10) scale(.62)">${""}</g><text x="40" y="150" font-family="Georgia,serif" font-size="72" fill="#F3EFE6" letter-spacing="2">—35%</text><text x="42" y="185" font-family="system-ui" font-size="15" fill="#CFC7B4">on selected outerwear · ends soon</text><circle cx="400" cy="90" r="70" fill="none" stroke="#CFC7B4" stroke-width="1.5" stroke-dasharray="5 7"/><circle cx="400" cy="230" r="34" fill="#C96F4A"/></svg></div>
-    </section>
+      <section class="promo reveal" aria-label="Seasonal offer">
+        <div class="promo-copy">
+          <span class="eyebrow" style="color:#CFC7B4">${isXmas ? "Holiday Sale" : "Limited time"}</span>
+          <h2>${isXmas ? "The Christmas Event — up to 40% off" : "The Layering Event — up to 35% off jackets & sweatshirts"}</h2>
+          <p style="color:#CFC7B4">${isXmas ? "Premium winter wear and perfect gifts. Use code <strong style='color:#fff'>XMAS26</strong> on orders over ₹14,999 at checkout." : "Utility shells, truckers and brushed fleece. Use code <strong style='color:#fff'>SIESTA15</strong> on orders over ₹11,999 at checkout."}</p>
+          <div class="hero-cta" style="margin-top:1.2rem"><a class="btn btn-clay" href="/shop?filter=sale">Shop the Sale</a><a class="btn btn-light" href="/shop?category=jackets">Explore Jackets</a></div>
+        </div>
+        ${isXmas ? `<div class="promo-art" aria-hidden="true" style="background: url(/images/chr_promo.jpg) center/cover; min-height: 260px;"></div>` : `<div class="promo-art" aria-hidden="true"><svg viewBox="0 0 500 320" style="width:100%;height:100%"><rect width="500" height="320" fill="none"/><g transform="translate(60,10) scale(.62)"></g><text x="40" y="150" font-family="Georgia,serif" font-size="72" fill="#F3EFE6" letter-spacing="2">—35%</text><text x="42" y="185" font-family="system-ui" font-size="15" fill="#CFC7B4">on selected outerwear · ends soon</text><circle cx="400" cy="90" r="70" fill="none" stroke="#CFC7B4" stroke-width="1.5" stroke-dasharray="5 7"/><circle cx="400" cy="230" r="34" fill="#C96F4A"/></svg></div>`}
+      </section>
 
-    ${eventSection()}
-    <section class="section" aria-labelledby="trendH">
-      <div class="section-head"><div><span class="eyebrow">Most viewed</span><h2 id="trendH">Trending now</h2></div><a class="link-btn" href="/shop?sort=popularity">Shop popular →</a></div>
-      <div class="product-grid" data-grid>${trend.map(cardHTML).join("")}</div>
-    </section>
+      ${eventSection()}
+      <section class="section" aria-labelledby="trendH">
+        <div class="section-head"><div><span class="eyebrow">Most viewed</span><h2 id="trendH">Trending now</h2></div><a class="link-btn" href="/shop?sort=popularity">Shop popular →</a></div>
+        ${carouselHTML(trend)}
+      </section>
 
-    <section class="section" aria-labelledby="bestH">
-      <div class="section-head"><div><span class="eyebrow">Customer favourites</span><h2 id="bestH">Best sellers</h2><p>Core styles our customers reorder — merchandised by our studio, not by paid placement.</p></div><a class="link-btn" href="/shop?filter=bestsellers">Shop all →</a></div>
-      <div class="product-grid" data-grid>${best.map(cardHTML).join("")}</div>
-    </section>
+      <section class="section" aria-labelledby="bestH">
+        <div class="section-head"><div><span class="eyebrow">Customer favourites</span><h2 id="bestH">Best sellers</h2><p>Core styles our customers reorder — merchandised by our studio, not by paid placement.</p></div><a class="link-btn" href="/shop?filter=bestsellers">Shop all →</a></div>
+        ${carouselHTML(best)}
+      </section>
 
     <section class="brand-statement reveal" aria-label="About Siesta">
       <span class="eyebrow">Why Siesta</span>
@@ -511,9 +564,26 @@ export function ProductPage(id) {
   const related = catalog().filter((x) => x.id !== p.id && (x.category === p.category || x.gender === p.gender)).slice(0, 4);
   const recent = getRecent().filter((x) => x.id !== p.id).slice(0, 4);
   const photos = p.images || [];
+  const getThumbType = (idx) => {
+    if (p.gender === "unisex") return idx === 0 ? "Man" : (idx === 1 ? "Woman" : "View");
+    if (p.gender === "men") return "Man";
+    if (p.gender === "women") return "Woman";
+    return "View";
+  };
+  const thumbLabelHTML = (idx) => {
+    const type = getThumbType(idx);
+    const icon = type === "Man" 
+      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><circle cx="10" cy="14" r="5"/><line x1="13.54" y1="10.46" x2="21" y2="3"/><line x1="16" y1="3" x2="21" y2="3"/><line x1="21" y1="3" x2="21" y2="8"/></svg>`
+      : (type === "Woman" 
+        ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><circle cx="12" cy="10" r="5"/><line x1="12" y1="15" x2="12" y2="22"/><line x1="9" y1="19" x2="15" y2="19"/></svg>`
+        : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>`);
+    
+    return `<div style="display:flex;flex-direction:row;align-items:center;justify-content:center;height:100%;background:#fff;color:var(--ink);font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;border-radius:999px;padding:0.4rem 1.2rem;">${icon}<span>${type === "View" ? "View " + (idx + 1) : type}</span></div>`;
+  };
+
   const thumbsHTML = photos.length
-    ? photos.map((src, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}"><img src="${esc(imgVariant(src, 200, 60))}" alt="" style="width:100%;height:100%;object-fit:cover" onload="this.classList.add('on')" onerror="this.remove()" /></button>`).join("")
-    : p.colors.map((c, i) => `<button data-thumb="${i}" aria-current="${i === 0}" aria-label="View in ${esc(c.name)}"><span aria-hidden="true">${productArt(p, i)}</span></button>`).join("");
+    ? photos.map((src, i) => `<button data-thumb="${i}" style="position:relative;background:transparent;padding:0;aspect-ratio:auto;border-radius:999px" aria-current="${i === 0}" aria-label="View photo ${i + 1} of ${esc(p.name)}">${thumbLabelHTML(i)}</button>`).join("")
+    : p.colors.map((c, i) => `<button data-thumb="${i}" style="position:relative;background:transparent;padding:0;aspect-ratio:auto;border-radius:999px" aria-current="${i === 0}" aria-label="View in ${esc(c.name)}">${thumbLabelHTML(i)}</button>`).join("");
   setTimeout(() => {
     const root = document.getElementById("app");
     let size = "", color = p.colors[0].name, qty = 1, cIdx = 0;
@@ -573,12 +643,16 @@ export function ProductPage(id) {
     if (stickyBar) {
       const observer = new IntersectionObserver((entries) => {
         stickyBar.hidden = entries[0].isIntersecting;
+        document.body.classList.toggle("has-sticky", !stickyBar.hidden);
       }, { threshold: 0 });
       if (addBtn) observer.observe(addBtn);
       else if (notifyBtn) observer.observe(notifyBtn);
       
       const stickyAddBtn = root.querySelector("#stickyAddBtn");
       if (stickyAddBtn) stickyAddBtn.onclick = () => addBtn.click();
+      
+      const stickyBuyBtn = root.querySelector("#stickyBuyBtn");
+      if (stickyBuyBtn) stickyBuyBtn.onclick = () => { const bb = root.querySelector("#buyBtn"); if(bb) bb.click(); };
       
       const stickyNotifyBtn = root.querySelector("#stickyNotifyBtn");
       if (stickyNotifyBtn) stickyNotifyBtn.onclick = () => notifyBtn.click();
@@ -623,22 +697,28 @@ export function ProductPage(id) {
       } catch { /* logged out or offline: no button */ }
       if (!box.isConnected) return;
       if (!Array.isArray(list) || !list.length) {
-        box.innerHTML = eligBtn + "<p>No verified-purchase reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
+        box.innerHTML = eligBtn + "<p>No reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
         setProductJsonLd(p, null);
       } else {
+        const head = root.querySelector("#pdpRevHead");
+        if (head) {
+          head.innerHTML = `Reviews <span class="muted" style="font-size:0.85em; font-weight:normal">(${list.length})</span> <span aria-hidden="true">+</span>`;
+        }
         const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
         setProductJsonLd(p, { avg, count: list.length });
         const line = root.querySelector("#pdpRatingLine");
         if (line) {
-          line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="Rated ${avg} out of 5 from ${list.length} verified reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> <span class="muted">· ${list.length} verified review${list.length === 1 ? "" : "s"}</span></button>`;
+          line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="Rated ${avg} out of 5 from ${list.length} reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${list.length} reviews`)} <strong>${avg}</strong> <span class="muted">· ${list.length} review${list.length === 1 ? "" : "s"}</span></button>`;
           line.querySelector("#pdpRatingJump").onclick = () => {
             const head = root.querySelector("#pdpRevHead");
-            if (head && head.getAttribute("aria-expanded") !== "true") head.click();
-            root.querySelector("#pdpRevBody")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            if (head) {
+              const headerOffset = 100;
+              window.scrollTo({ top: head.getBoundingClientRect().top + window.scrollY - headerOffset, behavior: "smooth" });
+            }
           };
         }
-        box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${list.length} verified reviews`)} <strong>${avg}</strong> · ${list.length} verified review${list.length === 1 ? "" : "s"}</p>` +
-          list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)}<strong>${esc(r.title || "Verified review")}</strong><span class="verified">Verified Purchase</span><time>${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.author)}</p></div>`).join("");
+        box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${list.length} reviews`)} <strong>${avg}</strong> · ${list.length} review${list.length === 1 ? "" : "s"}</p>` +
+          list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)} <strong>${esc(r.title || "Verified review")}</strong> <span class="verified-icon" aria-label="Verified" style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></span><time style="margin-left:auto">${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.name || r.author)}</p></div>`).join("");
       }
       const btn = box.querySelector("#pdpReviewBtn");
       if (btn) btn.onclick = () => openReviewModal(eligOrder, { id: p.id, name: p.name });
@@ -654,7 +734,7 @@ export function ProductPage(id) {
     <div class="pdp">
       <div class="gallery">
         <div class="g-main" id="gMain" role="button" tabindex="0" aria-label="Open image viewer for ${esc(p.name)}"></div>
-        ${((photos.length || p.colors.length) > 1) ? `<div class="g-thumbs" role="list" aria-label="${photos.length ? "Product photos" : "Colour views"}">${thumbsHTML}</div>` : ""}
+        ${((photos.length || p.colors.length) > 1) ? `<div class="g-thumbs" style="display:flex; flex-wrap:wrap; gap:0.5rem; justify-content:center; margin-top:0.8rem" role="list" aria-label="${photos.length ? "Product photos" : "Colour views"}">${thumbsHTML}</div>` : ""}
       </div>
       <div class="pdp-info">
         <span class="eyebrow">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
@@ -689,12 +769,8 @@ export function ProductPage(id) {
       </div>
     </div>
     <div class="sticky-pdp-bar" id="stickyPdpBar" hidden>
-      <div style="display:flex; justify-content:space-between; align-items:center; width:100%; gap:1rem;">
-        <div style="flex:1; min-width:0">
-          <p style="margin:0; font-size:0.9rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.name)}</p>
-          <p style="margin:0; font-size:0.8rem; color:var(--muted)">${inr(p.price)}</p>
-        </div>
-        ${inStock(p) ? `<button class="btn btn-dark btn-sm" id="stickyAddBtn" style="flex-shrink:0">Add to Cart</button>` : `<button class="btn btn-dark btn-sm" id="stickyNotifyBtn" data-notify="${p.id}" style="flex-shrink:0">Notify Me</button>`}
+      <div style="display:flex; width:100%; gap:.5rem;">
+        ${inStock(p) ? `<button class="btn btn-dark" id="stickyBuyBtn" style="flex:1">Buy Now</button><button class="btn btn-outline" id="stickyAddBtn" style="flex:1">Add to Cart</button>` : `<button class="btn btn-dark" id="stickyNotifyBtn" data-notify="${p.id}" style="width:100%">Notify Me</button>`}
       </div>
     </div>
     <section class="section"><div class="section-head"><h2>You may also like</h2><a class="link-btn" href="/shop?category=${p.category}">More ${esc(catLabel(p.category))} →</a></div><div class="product-grid" data-grid>${related.map(cardHTML).join("")}</div></section>

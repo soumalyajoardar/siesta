@@ -83,8 +83,9 @@ async function jwtKey() {
   const rec = await getAdminRecord();
   return crypto.scryptSync(String(rec.hash), JWT_SALT, 32);
 }
-async function issueToken() {
-  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + TOKEN_TTL })).toString("base64url");
+async function issueToken(remember = false) {
+  const ttl = remember ? 30 * 24 * 3600 * 1000 : TOKEN_TTL; // 30 days if remember
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + ttl })).toString("base64url");
   const sig = crypto.createHmac("sha256", await jwtKey()).update(`jwt.${payload}`).digest("hex");
   return `jwt.${payload}.${sig}`;
 }

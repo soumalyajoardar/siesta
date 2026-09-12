@@ -350,12 +350,26 @@ export function TrackPage(orderNo) {
     // Merge server-side history so other devices' orders appear here too.
     serverMyOrders().then(async (list) => {
       const box = document.getElementById("trackRecent");
-      if (!list || !box) return;
-      const known = new Set(S.getOrders().map((x) => x.orderNo));
-      for (const o of list) await mirrorOrder(o);
+      if (!box) return;
+      
+      let pruned = false;
+      if (!list) {
+        for (const o of S.getOrders().slice(0, 5)) {
+          if (o._remote) {
+            try { await import("../api.js").then(m => m.serverFetchOrder(o.orderNo)); }
+            catch (e) { if (e && e.status === 404) { S.removeOrderLocal(o.orderNo); pruned = true; } }
+          }
+        }
+      } else {
+        for (const o of S.getOrders()) {
+          if (o._remote && !list.some((x) => x.orderNo === o.orderNo)) { S.removeOrderLocal(o.orderNo); pruned = true; }
+        }
+        for (const o of list) await mirrorOrder(o);
+      }
+      
       const fresh = S.getOrders().slice(0, 5);
-      if (fresh.some((x) => !known.has(x.orderNo))) {
-        box.innerHTML = `<h2>Recent orders</h2>${fresh.map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}`;
+      if (pruned || (list && fresh.some((x) => !new Set(list.map(l => l.orderNo)).has(x.orderNo)))) {
+        box.innerHTML = fresh.length ? `<h2>Recent orders</h2>${fresh.map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}` : `<p class="muted">No orders on this device yet.</p>`;
       }
     }).catch(() => {});
   });
@@ -402,13 +416,13 @@ export function TrackPage(orderNo) {
 // Genuine per-stage notes. Legacy placeholder notes from older orders are
 // translated at render time so history reads honestly without rewriting it.
 const STAGE_NOTES_FALLBACK = {
-  confirmed: "Order received — your items are reserved and the packing list is ready.",
-  processing: "Your items are being picked and quality-checked at our facility.",
-  packed: "Packed, sealed and labelled — ready for courier handoff.",
-  shipped: "Handed to our delivery partner and on its way to you.",
-  out_for_delivery: "Out for delivery and arriving today — our courier attempts delivery between 10:00 AM and 10:00 PM. Please keep the COD amount ready.",
-  delivered: "Delivered. We hope you love it — tap below to review your items.",
-  cancelled: "Cancelled before shipment — nothing was charged (Cash on Delivery).",
+  confirmed: "Order confirmed. Your selection has been securely reserved and our team is preparing your package.",
+  processing: "In progress. Your items are currently undergoing careful quality inspection and picking at our facility.",
+  packed: "Securely packed. Your order is meticulously sealed, labelled, and awaiting scheduled courier pickup.",
+  shipped: "In transit. Your package has been handed over to our trusted delivery partner and is on its way to you.",
+  out_for_delivery: "Out for delivery. Your order will arrive today. For Cash on Delivery, please keep the exact amount ready.",
+  delivered: "Successfully delivered. We hope you enjoy your new pieces. We'd love to hear your thoughts — tap below to leave a review.",
+  cancelled: "Order cancelled. No charges were processed for this transaction.",
 };
 const LEGACY_NOTES = new Set(["Updated by store admin", "Cancelled by customer", "Updated by Siesta order system (illustrative)"]);
 const noteFor = (stage, note) => (note && !LEGACY_NOTES.has(note) ? note : STAGE_NOTES_FALLBACK[stage] || note || "");
@@ -466,7 +480,12 @@ function trackHTML(o) {
       </div>
       <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
     <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
-    ${o.status === "delivered" ? `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${o.items.map((it, k) => `<button class="btn btn-light btn-sm" data-review="${k}">Review Product</button>`).join("")}</div></div>` : ""}
+    ${(() => {
+      if (o.status !== "delivered") return "";
+      const unreviewed = o.items.map((it, k) => ({it, k})).filter(x => !localStorage.getItem(`reviewed_${o.orderNo}_${x.it.id}`));
+      if (!unreviewed.length) return "";
+      return `<div class="review-cta"><h3>Enjoying your order?</h3><p class="muted">Your review is published publicly with a Verified Purchase badge.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap">${unreviewed.map(x => `<button class="btn btn-light btn-sm" data-review="${x.k}">Review Product</button>`).join("")}</div></div>`;
+    })()}
     <p class="muted" style="font-size:.82rem">${o._remote ? "Live status from the Siesta store — updated at every step from packing to delivery." : "Status reflects Siesta's order system on this device. Live courier scans will appear here once a delivery partner is connected."}</p></div>
   ${aside}</div>`;
 }
