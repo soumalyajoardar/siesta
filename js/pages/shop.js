@@ -171,6 +171,7 @@ export function quickView(id) {
 function initHero(root, count) {
   if (!root) return;
   const box = root.querySelector("#heroBox");
+  const track = root.querySelector(".hero-slides");
   const slides = [...root.querySelectorAll(".hero-slide")];
   if (!box || !slides.length) return;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -183,19 +184,34 @@ function initHero(root, count) {
     const backs = [...s.querySelectorAll(".hero-bg")];
     let k = 0;
     const makeSwapper = (list) => {
-      let gen = 0;
-      return () => {
-        const my = ++gen;
-        list.forEach((im, j) => {
-          im.style.zIndex = j === k ? 3 : 1;
-          if (j === k) im.classList.add("on");
+        let prev = 0;
+        list.forEach((im, i) => {
+          im.style.opacity = '1';
+          im.style.transition = 'none';
+          im.style.transform = i === 0 ? 'translateX(0)' : 'translateX(100%)';
         });
-        setTimeout(() => {
-          if (my !== gen) return;
-          list.forEach((im, j) => { if (j !== k) { im.classList.remove("on"); im.style.zIndex = 1; } });
-        }, 850);
+        return () => {
+          if (prev === k) return;
+          const currIm = list[k];
+          const prevIm = list[prev];
+          
+          currIm.style.transition = 'none';
+          currIm.style.transform = 'translateX(100%)';
+          currIm.style.zIndex = '3';
+          
+          prevIm.style.zIndex = '2';
+          
+          void currIm.offsetWidth;
+          
+          currIm.style.transition = 'transform 0.8s var(--ease)';
+          prevIm.style.transition = 'transform 0.8s var(--ease)';
+          
+          currIm.style.transform = 'translateX(0)';
+          prevIm.style.transform = 'translateX(-100%)';
+          
+          prev = k;
+        };
       };
-    };
     const swapShots = makeSwapper(shots);
     const swapBacks = makeSwapper(backs);
     setInterval(() => {
@@ -210,7 +226,8 @@ function initHero(root, count) {
   const dots = [...root.querySelectorAll(".hero-dot")];
   let cur = 0, timer = null;
   const show = (n) => {
-    cur = ((n % count) + count) % count;
+      cur = ((n % count) + count) % count;
+      if (track) track.style.transform = `translateX(-${cur * 100}%)`;
     slides.forEach((s, i) => {
       const on = i === cur;
       s.classList.toggle("active", on);

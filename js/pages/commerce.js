@@ -479,7 +479,13 @@ function trackHTML(o) {
         <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></span></button>
       </div>
       <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
-    <ol class="timeline" style="--fill:${pct}%">${stages.map((s) => { const hit = o.timeline.find((t) => t.stage === s); const done = !!hit; const cur = o.status === s; return `<li class="${done ? "done" : ""} ${cur ? "current" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; }).join("")}</ol>
+    <ol class="timeline" style="--fill:${pct}%">${stages.map((s, i) => { 
+  const hit = o.timeline.find((t) => t.stage === s); 
+  const done = !!hit; 
+  const cur = o.status === s; 
+  const nextHit = stages[i+1] ? !!o.timeline.find(t => t.stage === stages[i+1]) : false;
+  return `<li class="${done ? "done" : ""} ${cur ? "current" : ""} ${nextHit ? "line-active" : ""}"><span class="dot" aria-hidden="true"></span><strong>${labels[s]}</strong>${hit ? `<time>${new Date(hit.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor(s, hit.note))}</div>` : `<div class="t-sub">Pending</div>`}</li>`; 
+}).join("")}</ol>
     ${(() => {
       if (o.status !== "delivered") return "";
       const unreviewed = o.items.map((it, k) => ({it, k})).filter(x => !localStorage.getItem(`reviewed_${o.orderNo}_${x.it.id}`));

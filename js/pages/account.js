@@ -112,18 +112,37 @@ export function AccountPage(tab = "overview") {
   });
   return `<div class="page"><span class="eyebrow" id="acctHello">My account</span><h1 class="h-display" style="font-size:2rem">My account</h1>
     <div class="acct">
-      <nav class="acct-nav" style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem;position:sticky;top:calc(var(--header-h) + 12px)">
-        ${NAV.map(([id, l]) => `<a href="/account/${id}" data-link ${tab === id ? 'aria-current="page"' : ""}>${l}</a>`).join("")}
-        <a href="/track" data-link>Track Order</a>
-        <a href="/wishlist" data-link>Wishlist</a>
-        <button class="link-btn" id="logoutBtn" style="width:100%;text-align:left;padding:.65rem .85rem;margin-top:.4rem;color:var(--danger);font-weight:600;display:block">Log out</button>
-      </nav>
+      <div class="acct-sidebar">
+        <button class="acct-mobile-toggle" id="acctMobileToggle" aria-expanded="false">
+          <span>${NAV.find(x => x[0] === tab)?.[1] || 'Menu'}</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chev"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <nav class="acct-nav" id="acctNav">
+          ${NAV.map(([id, l]) => `<a href="/account/${id}" data-link ${tab === id ? 'aria-current="page"' : ""}>${l}</a>`).join("")}
+          <a href="/track" data-link>Track Order</a>
+          <a href="/wishlist" data-link>Wishlist</a>
+          <button class="link-btn" id="logoutBtn" style="width:100%;text-align:left;padding:.65rem .85rem;margin-top:.4rem;color:var(--danger);font-weight:600;display:block">Log out</button>
+        </nav>
+      </div>
       <div id="acctMain"><div class="card"><div class="skel" style="height:120px"></div></div></div>
     </div>
   </div>`;
 }
 
 function wireAccount(tab, u) {
+  const tgl = document.getElementById("acctMobileToggle");
+  const nav = document.getElementById("acctNav");
+  if (tgl && nav) {
+    tgl.onclick = () => {
+      const open = nav.classList.toggle("open");
+      tgl.setAttribute("aria-expanded", String(open));
+    };
+    nav.querySelectorAll("a").forEach(a => a.addEventListener("click", () => {
+      nav.classList.remove("open");
+      tgl.setAttribute("aria-expanded", "false");
+    }));
+  }
+
   document.getElementById("logoutBtn").onclick = async () => { if (await confirmDialog("Log out", "Log out of your Siesta account on this device?", "Log out")) { S.logout(); toast("You've been logged out."); window.navigate("/"); } };
   const main = document.getElementById("acctMain");
   // Merge server-side order history (source of truth when logged in).
