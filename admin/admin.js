@@ -129,7 +129,7 @@
     } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }
   function renderProductTable(filter) {
-    const list = productsCache.filter((p) => !filter || (p.name + p.sku + p.category).toLowerCase().includes(filter.toLowerCase()));
+    const list = productsCache.filter((p) => !filter || (p.name + p.category).toLowerCase().includes(filter.toLowerCase()));
     $("#view").innerHTML = `
       <div class="toolbar">
         <input type="search" id="pq" placeholder="Search products…" value="${esc(filter)}" aria-label="Search products" />
@@ -141,7 +141,7 @@
         <tr><th></th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr>
         ${list.map((p) => `<tr>
           <td>${p.images && p.images[0] ? `<img class="thumb" src="${esc(p.images[0])}" alt="" loading="lazy" />` : `<span class="thumb-ph">S</span>`}</td>
-          <td><strong>${esc(p.name)}</strong><br /><span class="muted small">${esc(p.sku)} · ${esc(p.gender)}</span></td>
+          <td><strong>${esc(p.name)}</strong><br /><span class="muted small">${esc(p.gender)}</span></td>
           <td>${esc(p.category)}</td>
           <td>${inr(p.price)} <span class="muted small"><s>${inr(p.mrp)}</s></span></td>
           <td>${p.stock <= 0 ? '<span class="pill">Out</span>' : p.stock <= 5 ? `<span class="pill warn">${p.stock} low</span>` : p.stock}</td>
@@ -169,7 +169,7 @@
       <div class="modal-body"><form id="pForm">
         <div class="grid-2">
           <div class="field"><label>Product name *</label><input class="input" name="name" value="${esc(p.name)}" required /></div>
-          <div class="field"><label>SKU ${id ? "(locked)" : "(optional)"}</label><input class="input" name="sku" value="${esc(p.sku || "")}" ${id ? "disabled" : ""} /></div>
+          
           <div class="field"><label>Category</label><select class="input" name="category">${["tshirts", "shirts", "jackets", "hoodies", "jeans", "pants", "shorts", "sweatshirts"].map((c) => `<option ${p.category === c ? "selected" : ""}>${c}</option>`).join("")}</select></div>
           <div class="field"><label>Gender</label><select class="input" name="gender">${["men", "women", "unisex"].map((g) => `<option ${p.gender === g ? "selected" : ""}>${g}</option>`).join("")}</select></div>
           <div class="field"><label>Price (₹) *</label><input class="input" name="price" type="number" min="1" value="${p.price}" required /></div>
@@ -182,7 +182,7 @@
         <div class="field"><label>Description</label><textarea class="input" name="desc" rows="3">${esc(p.desc || "")}</textarea></div>
         <div class="field"><label>Care instructions</label><input class="input" name="care" value="${esc(p.care || "")}" /></div>
         <div class="field"><label>Details — one per line</label><textarea class="input" name="details" rows="3">${esc((p.details || []).join("\n"))}</textarea></div>
-        <div style="display:flex;gap:1rem;margin:.4rem 0"><label class="check-row"><input type="checkbox" name="isNew" ${p.isNew ? "checked" : ""} /> New arrival</label><label class="check-row"><input type="checkbox" name="bestseller" ${p.bestseller ? "checked" : ""} /> Best seller</label></div>
+        <div style="display:flex;gap:1rem;margin:.4rem 0;flex-wrap:wrap"><label class="check-row"><input type="checkbox" name="isNew" ${p.isNew ? "checked" : ""} /> New arrival</label><label class="check-row"><input type="checkbox" name="bestseller" ${p.bestseller ? "checked" : ""} /> Best seller</label><label class="check-row" title="Generates 10-30 fake reviews (~4.3 avg) when saving"><input type="checkbox" name="autoReviews" ${id ? "" : "checked"} /> Auto-generate reviews</label></div>
         <div class="field"><label>Product images <span class="muted">(first image = cover)</span></label>
           <div class="img-grid" id="imgGrid"></div>
           <label class="drop">Click or drop images here to upload (JPG/PNG/WebP/GIF/AVIF, ≤5MB each)<input type="file" id="imgInput" accept="image/*" multiple /></label>
@@ -271,13 +271,13 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
         return { name: name || "Default", hex: /^#[0-9a-fA-F]{6}$/.test(hex || "") ? hex : "#999999" };
       });
       const body = {
-        name: fd.get("name"), sku: fd.get("sku") || undefined, category: fd.get("category"), gender: fd.get("gender"),
+        name: fd.get("name"), category: fd.get("category"), gender: fd.get("gender"),
         price: Number(fd.get("price")), mrp: Number(fd.get("mrp")), stock: Number(fd.get("stock")),
         sizes: String(fd.get("sizes")).split(",").map((s) => s.trim()).filter(Boolean),
         colors: colors.length ? colors : [{ name: "Default", hex: "#999999" }],
         material: fd.get("material"), care: fd.get("care"), desc: fd.get("desc"),
         details: String(fd.get("details")).split("\n").map((s) => s.trim()).filter(Boolean),
-        isNew: !!fd.get("isNew"), bestseller: !!fd.get("bestseller"), images,
+        isNew: !!fd.get("isNew"), bestseller: !!fd.get("bestseller"), autoReviews: !!fd.get("autoReviews"), images,
       };
       try {
         if (id) await api("/api/admin/products/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(body) });

@@ -87,6 +87,45 @@ const discountPct = (p) => (p.mrp > p.price ? Math.round((1 - p.price / p.mrp) *
 const storeImgBase = () => (sbs.getUrl() ? `${sbs.getUrl().replace(/\/$/, "")}/storage/v1/object/public/product-images/` : "");
 const imgUrl = (u) => typeof u === "string" && (u.startsWith("/uploads/") || u.startsWith("/images/") || (storeImgBase() && u.startsWith(storeImgBase())));
 
+
+async function seedFakeReviewsForProduct(productId, productName) {
+  const reviews = await store.getReviews();
+  const count = Math.floor(Math.random() * 21) + 10;
+  const names = ["Aarav", "Vihaan", "Aditya", "Arjun", "Sai", "Reyansh", "Krishna", "Ishaan", "Shaurya", "Atharva", "Ananya", "Diya", "Saanvi", "Aadya", "Kiara", "Prisha", "Avni", "Kavya", "Isha", "Riya", "Karan", "Rahul", "Priya", "Sneha", "Rohit", "Vikram", "Neha", "Pooja", "Maya", "Kunal", "Tara"];
+  const titles = ["Great fit and quality", "Loved the fabric", "Exactly as shown", "Very comfortable", "Nice purchase", "Good, but size runs slightly small", "Excellent product", "Worth the price", "Premium feel", "Perfect for daily wear", "Highly recommended"];
+  const texts = [
+    "The fabric is really soft and it fits perfectly. Delivery was quick too.",
+    "I was skeptical about the quality but it turned out to be amazing. Will buy more.",
+    "Looks exactly like the pictures. The stitching is neat and it feels premium.",
+    "Very comfortable for all-day wear. The color didn't fade after washing.",
+    "Good purchase overall. The material is breathable and light.",
+    "The fit is great, but I'd recommend sizing up if you prefer a looser fit.",
+    "Absolutely love it! The design is minimal and it goes with everything.",
+    "Worth every penny. You can really feel the quality in the details.",
+    "A bit pricey but the quality justifies it. Feels very durable.",
+    "Perfect addition to my wardrobe. I've been wearing it non-stop since it arrived."
+  ];
+  const newReviews = [];
+  for (let i = 0; i < count; i++) {
+    const rand = Math.random();
+    const rating = rand < 0.5 ? 4 : (rand < 0.9 ? 5 : 3);
+    const date = new Date(Date.now() - Math.floor(Math.random() * 90 * 24 * 60 * 60 * 1000));
+    newReviews.push({
+      id: "rv-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      productId,
+      productName,
+      orderNo: "SIM_" + Math.floor(Math.random() * 1000000),
+      rating,
+      title: titles[Math.floor(Math.random() * titles.length)],
+      text: texts[Math.floor(Math.random() * texts.length)],
+      author: names[Math.floor(Math.random() * names.length)],
+      createdAt: date.toISOString(),
+      verified: true
+    });
+  }
+  await store.saveReviews([...newReviews, ...reviews]);
+}
+
 function sanitizeProduct(b, isNew) {
   const str = (v, max = 200) => String(v ?? "").slice(0, max).trim();
   const num = (v, fb = 0) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : fb);
@@ -111,8 +150,7 @@ function sanitizeProduct(b, isNew) {
   if (!p.name) throw new Error("Product name is required.");
   if (!p.sizes.length) throw new Error("At least one size is required.");
   if (isNew) {
-    p.id = str(b.id, 80).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || ("p-" + Date.now().toString(36));
-    p.sku = str(b.sku, 24) || ("SS-" + Date.now().toString(36).toUpperCase());
+    p.id = require("crypto").randomUUID();
     p.added = new Date().toISOString().slice(0, 10);
     p.popularity = 50;
   }
@@ -572,6 +610,9 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
     const p = sanitizeProduct(req.body, true);
     if (products.some((x) => x.id === p.id)) return res.status(409).json({ error: "A product with this ID already exists." });
     await store.saveProducts([p, ...products]);
+    if (req.body.autoReviews) {
+      await seedFakeReviewsForProduct(p.id, p.name);
+    }
     res.status(201).json(p);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -581,7 +622,7 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
     const i = products.findIndex((x) => x.id === req.params.id);
     if (i < 0) return res.status(404).json({ error: "Product not found." });
     const keep = products[i];
-    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, sku: req.body.sku || keep.sku, added: keep.added, popularity: keep.popularity ?? 50 };
+    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, added: keep.added, popularity: keep.popularity ?? 50 };
     await store.saveProducts(products);
     res.json(products[i]);
   } catch (e) { res.status(400).json({ error: e.message }); }

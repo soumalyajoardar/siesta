@@ -251,7 +251,7 @@ function setProductJsonLd(p, rating) {
       "@type": "Product",
       name: p.name,
       category: p.category,
-      sku: p.sku,
+      
       offers: {
         "@type": "Offer",
         priceCurrency: "INR",
@@ -702,7 +702,7 @@ export function ProductPage(id) {
       } else {
         const head = root.querySelector("#pdpRevHead");
         if (head) {
-          head.innerHTML = `Reviews <span class="muted" style="font-size:0.85em; font-weight:normal">(${list.length})</span> <span aria-hidden="true">+</span>`;
+          head.innerHTML = `<span>Reviews <strong style="font-size:0.85em;">(${list.length})</strong></span> <span aria-hidden="true">+</span>`;
         }
         const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
         setProductJsonLd(p, { avg, count: list.length });
@@ -739,7 +739,7 @@ export function ProductPage(id) {
       <div class="pdp-info">
         <span class="eyebrow">${esc(catLabel(p.category))} · ${esc(p.gender)}</span>
         <h1>${esc(p.name)}</h1>
-        <p class="muted" style="margin:0">SKU ${esc(p.sku)} · ${esc(p.material)}</p>
+        <p class="muted" style="margin:0">${esc(p.material)}</p>
         <div id="pdpRatingLine" style="margin:.35rem 0 0;min-height:1.4em"></div>
         <div class="pdp-price"><span class="price">${inr(p.price)}</span>${off ? `<s class="muted">${inr(p.mrp)}</s><span class="off">${off}% off</span>` : ""}</div>
         <p class="muted" style="font-size:.86rem">Inclusive of all taxes. <a href="/shipping">Shipping info</a></p>
@@ -764,7 +764,7 @@ export function ProductPage(id) {
         <div class="acc"><button class="acc-head" aria-expanded="true">Product details <span aria-hidden="true">−</span></button><div class="acc-body"><ul>${p.details.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Material & care <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p><strong>Material:</strong> ${esc(p.material)}</p><p><strong>Care:</strong> ${esc(p.care)}</p></div></div>
         <div class="acc"><button class="acc-head" aria-expanded="false">Shipping & returns <span aria-hidden="true">+</span></button><div class="acc-body" hidden><p>Ships within 24 hours. Free shipping over ₹1,499. 7-day returns on unworn items with tags. See <a href="/shipping">Shipping</a> and <a href="/returns">Returns</a>.</p></div></div>
-        <div class="acc"><button class="acc-head" aria-expanded="false">Specifications <span aria-hidden="true">+</span></button><div class="acc-body" hidden><table class="spec-table"><tr><th>SKU</th><td>${esc(p.sku)}</td></tr><tr><th>Category</th><td>${esc(catLabel(p.category))}</td></tr><tr><th>Gender</th><td>${esc(p.gender)}</td></tr><tr><th>Fit</th><td>As described above</td></tr></table></div></div>
+        <div class="acc"><button class="acc-head" aria-expanded="false">Specifications <span aria-hidden="true">+</span></button><div class="acc-body" hidden><table class="spec-table"><tr><th>Category</th><td>${esc(catLabel(p.category))}</td></tr><tr><th>Gender</th><td>${esc(p.gender)}</td></tr><tr><th>Fit</th><td>As described above</td></tr></table></div></div>
         <div class="acc"><button class="acc-head" id="pdpRevHead" aria-expanded="false">Reviews <span aria-hidden="true">+</span></button><div class="acc-body" id="pdpRevBody" hidden><p class="muted">Loading reviews…</p></div></div>
       </div>
     </div>

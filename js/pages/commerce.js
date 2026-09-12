@@ -74,7 +74,7 @@ export function CartPage() {
         ${t.lines.map((l) => `<div class="cart-line">
           <a class="cart-thumb" href="/product/${l.id}" aria-label="View ${esc(l.product.name)}">${productArt(l.product, 0, { w: 400 })}</a>
           <div><h3><a href="/product/${l.id}">${esc(l.product.name)}</a></h3>
-            <p class="line-meta">Size ${esc(l.size)} · ${esc(l.color)} · SKU ${esc(l.product.sku)}</p>
+            <p class="line-meta">Size ${esc(l.size)} · ${esc(l.color)}</p>
             <p class="line-meta">${(l.product.stock ?? 0) <= 5 ? `<strong style="color:var(--warning)">Only ${l.product.stock} left</strong>` : "In stock"}</p>
             <div class="line-controls">
               <span class="mini-qty"><button data-dec="${l.idx}" aria-label="Decrease quantity">−</button><output aria-live="polite">${l.qty}</output><button data-inc="${l.idx}" aria-label="Increase quantity">+</button></span>
