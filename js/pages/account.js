@@ -1,7 +1,7 @@
 // Auth, Account, Orders history, Static + Legal pages.
 import { BUSINESS } from "../config.js";
 import * as S from "../store.js";
-import { esc, inr, setTitle, toast, confirmDialog, isEmail, openReviewModal, addrIcon, addrLabel, openModal } from "../ui.js";
+import { esc, inr, setTitle, toast, confirmDialog, isEmail, openReviewModal, addrIcon, addrLabel, openModal, imgVariant } from "../ui.js";
 import { serverCancelOrder, serverMyOrders, mirrorOrder, orderNotifyOn, setOrderNotify } from "../api.js";
 
 const needAuth = async () => {
@@ -159,7 +159,7 @@ function wireAccount(tab, u) {
     for (const o of list) await mirrorOrder(o);
     if (pruned || S.getOrders().some((x) => !known.has(x.orderNo))) wireAccount(tab, u);
   }).catch(() => {});
-  const orders = S.getOrders().map(S.orderWithProgress);
+  const orders = S.getOrders().map(S.orderWithProgress).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   if (tab === "overview") {
     main.innerHTML = `<div class="stat-grid">
       <div class="stat"><span class="muted">Orders</span><strong>${orders.length}</strong><a class="link-btn" href="/account/orders">View orders →</a></div>
@@ -167,7 +167,18 @@ function wireAccount(tab, u) {
       <div class="stat"><span class="muted">Addresses</span><strong>${S.getAddrs().length}</strong><a class="link-btn" href="/account/addresses">Manage →</a></div></div>
       <div class="card" style="margin-top:1rem"><h3 style="margin-top:0">Latest order</h3>${orders[0] ? `<div class="summary-row"><span><strong>${esc(orders[0].orderNo)}</strong> · ${esc(orders[0].status.replace(/_/g, " "))}</span><a class="link-btn" href="/track/${esc(orders[0].orderNo)}">Track →</a></div>` : `<p class="muted">No orders yet. <a href="/shop">Start shopping</a>.</p>`}</div>`;
   } else if (tab === "orders") {
-    main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => { const di = S.deliveryInfo(o); return `<div class="order-card"><div class="order-top"><div><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span>${di && di.detail ? `<br/><span class="eta-line">${esc(di.headline)}${di.date && o.status !== "delivered" && o.status !== "cancelled" ? " · " + esc(new Date(di.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })) : ""}</span>` : ""}</div><span class="pill ${o.status === "delivered" ? "ok" : o.status === "cancelled" ? "" : "warn"}">${esc(o.status.replace(/_/g, " "))}</span></div>
+    const orderThumbs = (items) => {
+      const thumbs = items.slice(0, 3).map((i) => {
+        const p = S.productById(i.id);
+        const src = p && p.images && p.images[0];
+        if (src) return `<img src="${esc(imgVariant(src, 200, 60))}" alt="${esc(i.name)}" style="width:44px;height:52px;object-fit:cover;border-radius:6px;border:1px solid var(--line)" loading="lazy" onerror="this.style.display='none'" />`;
+        return `<span style="width:44px;height:52px;border-radius:6px;background:var(--sand);display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:var(--ink-2);font-size:.9rem;border:1px solid var(--line)">S</span>`;
+      });
+      const extra = items.length - 3;
+      if (extra > 0) thumbs.push(`<span style="width:44px;height:52px;border-radius:6px;background:var(--sand);display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;color:var(--ink-2);border:1px solid var(--line)">+${extra}</span>`);
+      return `<div style="display:flex;gap:4px;flex-shrink:0;margin-left:auto">${thumbs.join("")}</div>`;
+    };
+    main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => { const di = S.deliveryInfo(o); return `<div class="order-card"><div class="order-top" style="display:flex;gap:1rem;align-items:flex-start"><div style="flex:1;min-width:0"><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span>${di && di.detail ? `<br/><span class="eta-line">${esc(di.headline)}${di.date && o.status !== "delivered" && o.status !== "cancelled" ? " · " + esc(new Date(di.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })) : ""}</span>` : ""}</div><div style="display:flex;align-items:center;gap:.8rem;flex-shrink:0">${orderThumbs(o.items)}<span class="pill ${o.status === "delivered" ? "ok" : o.status === "cancelled" ? "" : "warn"}">${esc(o.status.replace(/_/g, " "))}</span></div></div>
       <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}</div>
       <div data-dwrap="${esc(o.orderNo)}" hidden style="margin-top:.6rem">${o.items.map((i, k) => { const live = S.productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="summary-row"><span>${nm} × ${i.qty} (${esc(i.size)})</span><span>${o.status === "delivered" ? `<button class="link-btn" data-rev="${esc(o.orderNo)}::${k}">Review</button> ` : ""}${inr(i.price * i.qty)}</span></div>`; }).join("")}</div></div>`; }).join("") : `<div class="empty"><h2>No orders yet</h2><p class="muted">Orders placed on this device will appear here.</p><a class="btn btn-dark" href="/shop">Start Shopping</a></div>`}</div>`;
     main.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => { const w = main.querySelector(`[data-dwrap="${b.dataset.detail}"]`); w.hidden = !w.hidden; }));
@@ -178,10 +189,54 @@ function wireAccount(tab, u) {
     }));
     main.querySelectorAll("[data-cancel]").forEach((b) => (b.onclick = async () => {
       if (!(await confirmDialog("Cancel order", `Cancel order ${b.dataset.cancel}? This cannot be undone.`, "Cancel order"))) return;
-      try { await serverCancelOrder(b.dataset.cancel); } catch (e) { if (e.status && e.status !== 404) { toast(e.message, "error"); return; } }
-      S.cancelOrder(b.dataset.cancel);
+      const orderNo = b.dataset.cancel;
+      try { await serverCancelOrder(orderNo); } catch (e) { if (e.status && e.status !== 404) { toast(e.message, "error"); return; } }
+      S.cancelOrder(orderNo);
       toast("Order cancelled.");
-      wireAccount(tab, await S.currentUser());
+      // Show feedback modal
+      const reasons = ["Changed my mind", "Found better price", "Ordered by mistake", "Delivery too slow", "Other"];
+      const { close, el } = openModal("We'd love your feedback", `
+        <p style="text-align:center;margin-top:.5rem" class="muted">Why did you cancel this order?</p>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin:1rem 0" id="fbReasons">
+          ${reasons.map(r => `<button class="btn btn-outline btn-sm" data-reason="${esc(r)}">${esc(r)}</button>`).join("")}
+        </div>
+        <textarea id="fbDetails" class="input" rows="3" placeholder="Any additional details (optional)" style="width:100%;margin-bottom:1rem"></textarea>
+        <div style="display:flex;justify-content:center;gap:.8rem">
+          <button class="btn btn-dark" id="fbSubmit">Submit Feedback</button>
+          <button class="btn btn-light" id="fbSkip">Skip</button>
+        </div>
+      `);
+      let selectedReason = "";
+      el.querySelectorAll("[data-reason]").forEach(rb => {
+        rb.onclick = () => {
+          el.querySelectorAll("[data-reason]").forEach(x => x.classList.remove("btn-dark"));
+          el.querySelectorAll("[data-reason]").forEach(x => x.classList.add("btn-outline"));
+          rb.classList.remove("btn-outline");
+          rb.classList.add("btn-dark");
+          selectedReason = rb.dataset.reason;
+        };
+      });
+      el.querySelector("#fbSkip").onclick = () => { close(); wireAccount(tab, u); };
+      el.querySelector("#fbSubmit").onclick = async () => {
+        const details = el.querySelector("#fbDetails").value.trim();
+        try {
+          await fetch("/api/orders/" + encodeURIComponent(orderNo) + "/feedback", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason: selectedReason, details })
+          });
+        } catch {}
+        close();
+        const { close: close2, el: el2 } = openModal("Thank you!", `
+          <p style="text-align:center;font-size:1.05rem;margin:1.5rem 0">Thank you for your feedback! By this, we can improve our quality of services.</p>
+          <div style="display:flex;justify-content:center"><button class="btn btn-dark" data-done>Done</button></div>
+        `);
+        el2.querySelector("[data-done]").onclick = () => { close2(); wireAccount(tab, u); };
+      };
+      // Fallback: if they close modal via X, still re-render
+      const obs = new MutationObserver(() => {
+        if (!document.querySelector(".modal-scrim")) { obs.disconnect(); wireAccount(tab, u); }
+      });
+      obs.observe(document.getElementById("modalRoot"), { childList: true });
     }));
   } else if (tab === "addresses") {
     const list = S.getAddrs();
@@ -252,13 +307,139 @@ export const StaticPages = {
   contact: () => {
       setTitle("Contact Us - Siesta", "Reach Siesta support.");
       
-      // Load user email if logged in to pre-fill and fetch tickets
       setTimeout(async () => {
         const u = await S.currentUser();
         const userEmail = u ? u.email : "";
         
         const form = document.getElementById("ctForm");
         if (form && userEmail) form.querySelector("#ctEmail").value = userEmail;
+        
+        // Render tickets list
+        const renderTickets = async () => {
+          if (!userEmail) return;
+          const tContainer = document.getElementById("ticketsContainer");
+          if (!tContainer) return;
+          try {
+            const r = await fetch("/api/tickets?email=" + encodeURIComponent(userEmail));
+            const tickets = await r.json();
+            if (!Array.isArray(tickets) || tickets.length === 0) {
+              tContainer.innerHTML = "";
+              return;
+            }
+            tContainer.innerHTML = `<h2 style="margin-top:2.5rem">Your Support Tickets</h2>` + tickets.map(t => `
+              <div class="ticket-card" style="border:1px solid var(--line);border-radius:10px;padding:1.2rem;margin-top:1rem;background:var(--sand)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+                  <strong>Ticket #${esc(t.id.slice(0, 8).toUpperCase())}</strong>
+                  <span class="pill ${t.status === 'closed' ? '' : 'warn'}" style="text-transform:uppercase;font-size:.75rem">${esc(t.status || 'open')}</span>
+                </div>
+                <p class="muted" style="font-size:.88rem;margin:0">${esc(t.message.slice(0, 120))}${t.message.length > 120 ? "..." : ""}</p>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem">
+                  <span class="muted" style="font-size:.8rem">${new Date(t.createdAt).toLocaleDateString("en-IN")} · ${(t.replies || []).length} replies</span>
+                  <button class="link-btn" data-ticket="${esc(t.id)}">Open Chat →</button>
+                </div>
+              </div>
+            `).join("");
+            
+            // Wire up chat buttons
+            tContainer.querySelectorAll("[data-ticket]").forEach(btn => {
+              btn.onclick = () => openTicketChat(tickets.find(t => t.id === btn.dataset.ticket), userEmail);
+            });
+          } catch(e) {}
+        };
+        
+        // Open chat modal for a ticket
+        const openTicketChat = (ticket, email) => {
+          if (!ticket) return;
+          let pollTimer = null;
+          
+          const renderChat = (t) => {
+            const { close, el } = openModal(`Ticket #${t.id.slice(0, 8).toUpperCase()}`, `
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                <span class="muted" style="font-size:.85rem">Status:</span>
+                <span class="pill ${t.status === 'closed' ? '' : 'warn'}" style="text-transform:uppercase;font-size:.75rem">${esc(t.status || 'open')}</span>
+              </div>
+              <div id="chatMessages" style="max-height:45vh;overflow-y:auto;display:flex;flex-direction:column;gap:.6rem;padding:.5rem 0">
+                <div style="background:var(--sand);padding:.8rem 1rem;border-radius:12px 12px 12px 4px;max-width:85%;align-self:flex-start">
+                  <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.3rem"><strong>You</strong> · ${new Date(t.createdAt).toLocaleString("en-IN")}</div>
+                  <p style="margin:0;font-size:.92rem;white-space:pre-wrap">${esc(t.message)}</p>
+                </div>
+                ${(t.replies || []).map(r => r.from === "Admin" ? `
+                  <div style="background:#E9F5E9;padding:.8rem 1rem;border-radius:12px 12px 4px 12px;max-width:85%;align-self:flex-end">
+                    <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.3rem;text-align:right"><strong>Siesta Support</strong> · ${new Date(r.createdAt).toLocaleString("en-IN")}</div>
+                    <p style="margin:0;font-size:.92rem;white-space:pre-wrap">${esc(r.message)}</p>
+                  </div>
+                ` : `
+                  <div style="background:var(--sand);padding:.8rem 1rem;border-radius:12px 12px 12px 4px;max-width:85%;align-self:flex-start">
+                    <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.3rem"><strong>You</strong> · ${new Date(r.createdAt).toLocaleString("en-IN")}</div>
+                    <p style="margin:0;font-size:.92rem;white-space:pre-wrap">${esc(r.message)}</p>
+                  </div>
+                `).join("")}
+              </div>
+              ${t.status !== "closed" ? `
+                <div style="display:flex;gap:.5rem;margin-top:1rem;align-items:flex-end">
+                  <textarea id="chatReply" class="input" rows="2" placeholder="Type your reply..." style="flex:1;resize:none"></textarea>
+                  <button class="btn btn-dark" id="chatSend" style="flex-shrink:0">Send</button>
+                </div>
+              ` : `<p class="muted" style="text-align:center;margin-top:1rem;font-size:.9rem">This ticket has been closed.</p>`}
+            `);
+            
+            // Scroll chat to bottom
+            const chatBox = el.querySelector("#chatMessages");
+            if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+            
+            // Wire send button
+            if (t.status !== "closed") {
+              const sendBtn = el.querySelector("#chatSend");
+              const replyBox = el.querySelector("#chatReply");
+              sendBtn.onclick = async () => {
+                const msg = replyBox.value.trim();
+                if (msg.length < 2) { toast("Message too short.", "error"); return; }
+                sendBtn.disabled = true;
+                try {
+                  const r = await fetch("/api/tickets/" + encodeURIComponent(t.id) + "/reply", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, message: msg })
+                  });
+                  const data = await r.json();
+                  if (!r.ok) throw new Error(data.error || "Failed to send.");
+                  t.replies = data.ticket.replies;
+                  t.status = data.ticket.status;
+                  close();
+                  if (pollTimer) clearInterval(pollTimer);
+                  renderChat(t);
+                } catch (e) { toast(e.message, "error"); sendBtn.disabled = false; }
+              };
+              replyBox.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } });
+            }
+            
+            // Poll for new replies every 15 seconds
+            pollTimer = setInterval(async () => {
+              try {
+                const r = await fetch("/api/tickets?email=" + encodeURIComponent(email));
+                const all = await r.json();
+                const fresh = all.find(x => x.id === t.id);
+                if (fresh && (fresh.replies || []).length !== (t.replies || []).length) {
+                  t.replies = fresh.replies;
+                  t.status = fresh.status;
+                  close();
+                  renderChat(t);
+                }
+              } catch {}
+            }, 15000);
+            
+            // Clean up poll on modal close
+            const obs = new MutationObserver(() => {
+              if (!document.querySelector(".modal-scrim")) {
+                if (pollTimer) clearInterval(pollTimer);
+                obs.disconnect();
+                renderTickets();
+              }
+            });
+            obs.observe(document.getElementById("modalRoot"), { childList: true });
+          };
+          
+          renderChat(ticket);
+        };
         
         if (form) {
           form.onsubmit = async (e) => {
@@ -274,45 +455,29 @@ export const StaticPages = {
               const data = await r.json().catch(() => ({}));
               if (!r.ok) throw new Error(data.error || "Could not send message.");
               
-              // Custom Modal Dialog instead of toast
-              const { close, el } = openModal("Support Request Received", `<p style="text-align:center; font-size:1.05rem; margin-top:1rem;">Our system will connect you to a live representative shortly! Due to high traffic it can delay upto 24 - 48hrs.</p><div style="display:flex;justify-content:center;margin-top:1.8rem"><button class="btn btn-dark" data-ack>Acknowledge</button></div>`);
-              el.querySelector("[data-ack]").onclick = () => { close(); window.location.reload(); };
-              
               e.target.reset();
+              toast("Your support ticket has been created!");
+              
+              // Refresh tickets list to show the new one
+              await renderTickets();
+              
+              // If we got a ticket ID back and user is logged in, open the chat directly
+              if (data.ticketId && userEmail) {
+                try {
+                  const tr = await fetch("/api/tickets?email=" + encodeURIComponent(userEmail));
+                  const tickets = await tr.json();
+                  const newTicket = tickets.find(t => t.id === data.ticketId);
+                  if (newTicket) openTicketChat(newTicket, userEmail);
+                } catch {}
+              }
             } catch (err) { toast(err.message, "error"); }
             finally { btn.disabled = false; }
           };
         }
         
-        // Fetch and display tickets if logged in
-        if (userEmail) {
-          try {
-            const r = await fetch("/api/tickets?email=" + encodeURIComponent(userEmail));
-            const tickets = await r.json();
-            const tContainer = document.getElementById("ticketsContainer");
-            if (tContainer && tickets.length > 0) {
-              tContainer.innerHTML = `<h2 style="margin-top:3rem">Your Support Tickets</h2>` + tickets.map(t => `
-                <div style="border:1px solid var(--line); border-radius:8px; padding:1.2rem; margin-top:1rem; background:var(--sand)">
-                  <div style="display:flex; justify-content:space-between; margin-bottom:.5rem;">
-                    <strong>Ticket #${t.id.slice(0, 8).toUpperCase()}</strong>
-                    <span class="badge ${t.status === 'closed' ? 'sale' : 'new'}">${(t.status || 'pending').toUpperCase()}</span>
-                  </div>
-                  <p class="muted" style="font-size:0.9rem; margin-bottom:1rem">${esc(t.message)}</p>
-                  ${(t.replies || []).map(r => `
-                    <div style="background:#fff; border-radius:6px; padding:1rem; margin-top:.5rem; border:1px solid var(--line-2)">
-                      <strong>${esc(r.from)}</strong> <span class="muted" style="font-size:0.8rem">(${new Date(r.createdAt).toLocaleDateString()})</span>
-                      <p style="margin:0; margin-top:.3rem; font-size:0.9rem">${esc(r.message)}</p>
-                    </div>
-                  `).join("")}
-                </div>
-              `).join("");
-            }
-          } catch(e) {}
-        }
+        // Load existing tickets on page load
+        await renderTickets();
       }, 50);
-
-      // In ui.js openModal isn't globally exposed on window by default unless we import it, wait, we ALREADY imported openModal at top of account.js!
-      // So we can just use `openModal` directly without `window.`.
 
       return `<div class="page"><div class="prose"><h1>Contact us</h1><p>Support email: <strong>${esc(biz(BUSINESS.supportEmail))}</strong><br/>Phone: <strong>${esc(biz(BUSINESS.supportPhone))}</strong><br/>Hours: ${esc(biz(BUSINESS.hours))}<br/>Address: ${esc(biz(BUSINESS.businessAddress))}</p><form id="ctForm" class="form-grid" style="margin-top:1rem"><div class="field"><label for="ctName">Name *</label><input id="ctName" name="name" class="input" autocomplete="name"/></div><div class="field"><label for="ctEmail">Email *</label><input id="ctEmail" name="email" type="email" class="input" autocomplete="email"/></div><div class="field full"><label for="ctMsg">How can we help? *</label><textarea id="ctMsg" name="message" class="input" rows="5" placeholder="Order number (if any) + your question"></textarea></div><div class="full"><button class="btn btn-dark" type="submit">Send Message</button></div></form><div id="ticketsContainer"></div></div></div>`;
     },

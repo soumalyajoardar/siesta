@@ -342,7 +342,7 @@ function successHTML(o) {
 // ---------------- TRACKING ----------------
 export function TrackPage(orderNo) {
   setTitle("Track Order — Siesta", "Follow your Siesta order status.");
-  const orders = S.getOrders();
+  const orders = [...S.getOrders()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   if (!orderNo) {
   setTimeout(() => {
     const form = document.getElementById("trackForm");
@@ -354,7 +354,7 @@ export function TrackPage(orderNo) {
       
       let pruned = false;
       if (!list) {
-        for (const o of S.getOrders().slice(0, 5)) {
+        for (const o of orders.slice(0, 5)) {
           if (o._remote) {
             try { await import("../api.js").then(m => m.serverFetchOrder(o.orderNo)); }
             catch (e) { if (e && e.status === 404) { S.removeOrderLocal(o.orderNo); pruned = true; } }
@@ -367,7 +367,7 @@ export function TrackPage(orderNo) {
         for (const o of list) await mirrorOrder(o);
       }
       
-      const fresh = S.getOrders().slice(0, 5);
+      const fresh = [...S.getOrders()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
       if (pruned || (list && fresh.some((x) => !new Set(list.map(l => l.orderNo)).has(x.orderNo)))) {
         box.innerHTML = fresh.length ? `<h2>Recent orders</h2>${fresh.map((o) => `<div class="order-card"><div class="order-top"><strong>${esc(o.orderNo)}</strong><a class="link-btn" href="/track/${esc(o.orderNo)}">View →</a></div></div>`).join("")}` : `<p class="muted">No orders on this device yet.</p>`;
       }
@@ -432,19 +432,9 @@ function trackHTML(o) {
   const labels = { confirmed: "Order Confirmed", processing: "Processing", packed: "Packed", shipped: "Shipped", out_for_delivery: "Out for Delivery", delivered: "Delivered" };
   const crumbs = `<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/orders">Orders</a><span>/</span><span aria-current="page">${esc(o.orderNo)}</span></nav>`;
   const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
-  const thumbFor = (i) => {
-    const p = productById(i.id);
-    const src = p && p.images && p.images[0];
-    const inner = src
-      ? `<img class="t-item-thumb" src="${esc(imgVariant(src, 200, 60))}" alt="" loading="lazy" onload="this.classList.add('on')" onerror="this.remove()" />`
-      : p
-        ? `<span class="t-item-thumb t-item-art" aria-hidden="true">${productArt(p)}</span>`
-        : `<span class="t-item-thumb t-item-ph" aria-hidden="true">S</span>`;
-    return p ? `<a href="/product/${i.id}" aria-label="View ${esc(i.name)}" style="flex:none;line-height:0">${inner}</a>` : inner;
-  };
   const aside = `<aside class="card track-aside"><h2 style="margin-top:0">Delivery details</h2>
     <p class="t-addr"><span aria-hidden="true">${addrIcon(o.address.label, 16)}</span><span>${esc(o.address.name)} <span class="muted" style="font-size:.8rem">${addrLabel(o.address.label)}</span><br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
-    <h3>Items (${itemCount})</h3>${o.items.map((i) => { const live = productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="t-item">${thumbFor(i)}<span class="t-item-name">${nm} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`; }).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
+    <h3>Items (${itemCount})</h3>${o.items.map((i) => { const live = productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="t-item"><span class="t-item-name">${nm} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`; }).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
 
   if (o.status === "cancelled") {
     const conf = o.timeline.find((t) => t.stage === "confirmed");

@@ -379,17 +379,7 @@ export function orderWithProgress(o) {
   if (o.status === "cancelled") return { ...o, stageIndex: -1, eta: "—" };
   const storedIdx = STAGES.indexOf(o.status);
   const safeIdx = storedIdx >= 0 ? storedIdx : 0;
-  if (o._remote) {
-    return { ...o, status: STAGES[safeIdx], stageIndex: safeIdx, eta: etaFor(o.createdAt) };
-  }
-  const ageDays = (Date.now() - new Date(o.createdAt).getTime()) / 86400000;
-  const idx = Math.min(STAGES.length - 1, o.timeline.length - 1 + Math.floor(ageDays));
-  const tl = [...o.timeline];
-  for (let i = tl.length; i <= idx; i++) {
-    const at = new Date(new Date(o.createdAt).getTime() + i * 86400000).toISOString();
-    tl.push({ stage: STAGES[i], at, note: "Updated by Siesta order system (illustrative)" });
-  }
-  return { ...o, status: STAGES[idx], timeline: tl, stageIndex: idx, eta: etaFor(o.createdAt) };
+  return { ...o, status: STAGES[safeIdx], stageIndex: safeIdx, eta: etaFor(o.createdAt) };
 }
 const etaFor = (iso) => {
   const d = new Date(new Date(iso).getTime() + 5 * 86400000);
@@ -410,12 +400,10 @@ export function deliveryInfo(o) {
     const at = hit ? new Date(hit.at).getTime() : new Date(o.createdAt).getTime();
     return { kind: "delivered", headline: "Delivered", detail: "Delivered on " + fmtDay(at), date: at, daysLeft: 0 };
   }
-  const target = o.auto && o.auto.deliverAt
-    ? new Date(o.auto.deliverAt).getTime()
-    : new Date(o.createdAt).getTime() + (o.express ? 2 : 5) * DAY_MS;
+  const target = new Date(o.createdAt).getTime() + (o.express ? 2 : 5) * DAY_MS;
   const daysLeft = Math.ceil((startOfDay(target) - startOfDay(Date.now())) / DAY_MS);
   const headline = daysLeft > 1 ? `Arriving in ${daysLeft} days` : daysLeft === 1 ? "Arriving tomorrow" : daysLeft === 0 ? "Arriving today" : "Delayed — arriving soon";
-  const detail = "Estimated delivery " + fmtDay(target) + (o.auto && o.auto.active ? " · automated daily" : o.express ? " · express" : "");
+  const detail = "Estimated delivery " + fmtDay(target) + (o.express ? " · express" : "");
   return { kind: daysLeft < 0 ? "delayed" : "active", headline, detail, date: target, daysLeft };
 }
 export function cancelOrder(no) {

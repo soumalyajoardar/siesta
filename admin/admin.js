@@ -160,7 +160,7 @@
   }
 
   function openProductEditor(id) {
-    const p = id ? productsCache.find((x) => x.id === id) : { name: "", category: "tshirts", gender: "unisex", price: 999, mrp: 1499, colors: [{ name: "Default", hex: "#999999" }], sizes: ["S", "M", "L", "XL"], stock: 10, material: "", care: "", desc: "", details: [], isNew: true, bestseller: false, images: [] };
+    const p = id ? productsCache.find((x) => x.id === id) : { name: "", category: "tshirts", gender: "unisex", price: 999, mrp: 1499, colors: [{ name: "Default", hex: "#999999" }], sizes: ["S", "M", "L", "XL"], stock: 10, material: "", care: "", desc: "", details: [], isNew: false, bestseller: false, images: [] };
     if (id && !p) return;
     const root = $("#modalRoot");
     root.innerHTML = `
@@ -669,14 +669,14 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
         $("#view").innerHTML = `
           <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
             <div class="stat"><span>Total tickets</span><strong>${list.length}</strong></div>
-            <div class="stat"><span>Pending</span><strong>${list.filter(m => (m.status || 'pending') !== 'closed').length}</strong></div>
+            <div class="stat"><span>Open</span><strong>${list.filter(m => (m.status || 'open') !== 'closed').length}</strong></div>
             <div class="stat"><span>Closed</span><strong>${list.filter(m => m.status === 'closed').length}</strong></div>
           </div>
           <div class="card" style="padding:0;overflow:auto"><table class="tbl">
             <tr><th>Ticket ID</th><th>Status</th><th>Date</th><th>Customer</th><th>Subject</th><th></th></tr>
             ${list.map((m) => `<tr>
               <td class="muted small">${esc(m.id.slice(0,8).toUpperCase())}</td>
-              <td><span class="badge ${(m.status||'pending')==='closed'?'sale':'new'}">${esc((m.status||'pending').toUpperCase())}</span></td>
+              <td><span class="badge ${(m.status||'open')==='closed'?'sale':'new'}">${esc((m.status||'open').toUpperCase())}</span></td>
               <td class="muted small">${new Date(m.createdAt).toLocaleString("en-IN")}</td>
               <td><strong>${esc(m.name)}</strong><br /><a class="muted small" href="mailto:${esc(m.email)}">${esc(m.email)}</a></td>
               <td><span class="muted">${esc(m.message.slice(0, 80))}${m.message.length > 80 ? "..." : ""}</span></td>
@@ -696,7 +696,7 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
               root.innerHTML = `
                 <div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px">
                   <div class="modal-head">
-                    <strong>Ticket #${m.id.slice(0,8).toUpperCase()} - ${(m.status||'pending').toUpperCase()}</strong>
+                    <strong>Ticket #${m.id.slice(0,8).toUpperCase()} - ${(m.status||'open').toUpperCase()}</strong>
                     <button class="btn btn-light btn-sm" id="mClose">Close ✕</button>
                   </div>
                   <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem; max-height:60vh; overflow-y:auto; background:var(--sand)">
@@ -777,7 +777,7 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
   /* ---------- orders ---------- */  async function vOrders() {
     $("#view").innerHTML = "<p class='muted'>Loading…</p>";
     try {
-      const orders = await api("/api/admin/orders");
+      const orders = (await api("/api/admin/orders")).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       const tabs = ["all", "pending", "delivered", "cancelled"];
       $("#view").innerHTML = `
         <div class="toolbar" style="gap:.5rem; justify-content:flex-start;">
@@ -802,7 +802,9 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
             return `
             <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
               <div><strong>${esc(o.orderNo)}</strong>${o.express ? ' <span class="pill">Express</span>' : ""}<br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
-              <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
+              <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div>
+              ${o.status === "cancelled" && o.cancellationFeedback ? `<div style="margin-top:.6rem;padding:.6rem;background:var(--sand);border-radius:6px;border:1px solid var(--line);font-size:.85rem"><strong>Cancellation Feedback:</strong> ${esc(o.cancellationFeedback.reason)}${o.cancellationFeedback.details ? ` - ${esc(o.cancellationFeedback.details)}` : ""}</div>` : ""}
+              </div>
               <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
               <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
               <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>

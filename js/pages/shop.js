@@ -286,7 +286,7 @@ export function HomePage() {
   setTitle("Siesta — Modern Essentials & Streetwear", "Premium everyday fashion: tees, shirts, jackets, hoodies, denim and more.");
   const isXmas = siteSettings().eventPreset === "christmas";
   const ALL = window.__catalogLoading ? Array.from({length: 8}) : catalog();
-  const newArr = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].sort((a, b) => b.added.localeCompare(a.added)).slice(0, 8);
+  const newArr = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].filter(p => p.isNew).sort((a, b) => b.added.localeCompare(a.added)).slice(0, 8);
   const trend = window.__catalogLoading ? ALL.slice(0, 4) : [...ALL].sort((a, b) => b.popularity - a.popularity).slice(0, 8);
   const best = window.__catalogLoading ? ALL.slice(0, 4) : ALL.filter((p) => p.bestseller);
   const sale = window.__catalogLoading ? ALL.slice(0, 4) : ALL.filter((p) => discountPct(p) >= 25).slice(0, 4);
@@ -433,7 +433,7 @@ export function HomePage() {
         <div class="promo-copy">
           <span class="eyebrow" style="color:#CFC7B4">${isXmas ? "Holiday Sale" : "Limited time"}</span>
           <h2>${isXmas ? "The Christmas Event — up to 40% off" : "The Layering Event — up to 35% off jackets & sweatshirts"}</h2>
-          <p style="color:#CFC7B4">${isXmas ? "Premium winter wear and perfect gifts. Use code <strong style='color:#fff'>XMAS26</strong> on orders over ₹14,999 at checkout." : "Utility shells, truckers and brushed fleece. Use code <strong style='color:#fff'>SIESTA15</strong> on orders over ₹11,999 at checkout."}</p>
+          <p style="color:#CFC7B4">${isXmas ? "Premium winter wear and perfect gifts. Use code <strong style='color:#fff'>XMAS26</strong> on orders over ₹14,999 at checkout." : "Utility shells, truckers and brushed fleece. Use code <strong style='color:#fff'>SIESTA15</strong> on orders over ₹1,999 at checkout."}</p>
           <div class="hero-cta" style="margin-top:1.2rem"><a class="btn btn-clay" href="/shop?filter=sale">Shop the Sale</a><a class="btn btn-light" href="/shop?category=jackets">Explore Jackets</a></div>
         </div>
         ${isXmas ? `<div class="promo-art" aria-hidden="true" style="background: url(/images/chr_promo.jpg) center/cover; min-height: 260px;"></div>` : `<div class="promo-art" aria-hidden="true"><svg viewBox="0 0 500 320" style="width:100%;height:100%"><rect width="500" height="320" fill="none"/><g transform="translate(60,10) scale(.62)"></g><text x="40" y="150" font-family="Georgia,serif" font-size="72" fill="#F3EFE6" letter-spacing="2">—35%</text><text x="42" y="185" font-family="system-ui" font-size="15" fill="#CFC7B4">on selected outerwear · ends soon</text><circle cx="400" cy="90" r="70" fill="none" stroke="#CFC7B4" stroke-width="1.5" stroke-dasharray="5 7"/><circle cx="400" cy="230" r="34" fill="#C96F4A"/></svg></div>`}

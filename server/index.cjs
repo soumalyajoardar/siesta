@@ -179,9 +179,38 @@ app.post("/api/contact", async (req, res) => {
     contactHits.set(ip, hits);
     const msgs = await store.getMessages();
     const id = require("crypto").randomBytes(8).toString("hex");
-    await store.saveMessages([{ id, name, email, message, createdAt: new Date().toISOString() }, ...msgs].slice(0, 500));
-    res.json({ ok: true });
+    await store.saveMessages([{ id, name, email, message, status: "open", replies: [], createdAt: new Date().toISOString() }, ...msgs].slice(0, 500));
+    res.json({ ok: true, ticketId: id });
   } catch (e) { res.status(500).json({ error: "Could not send message." }); }
+});
+
+// Public ticket list by email (for logged-in users to see their own tickets).
+app.get("/api/tickets", async (req, res) => {
+  try {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    if (!emailOk(email)) return res.status(400).json({ error: "Valid email required." });
+    const msgs = await store.getMessages();
+    const userTickets = msgs.filter((m) => m.email.toLowerCase() === email).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json(userTickets);
+  } catch (e) { res.status(500).json({ error: "Could not load tickets." }); }
+});
+
+// Public user reply to their own ticket.
+app.post("/api/tickets/:id/reply", async (req, res) => {
+  try {
+    const msgs = await store.getMessages();
+    const m = msgs.find((x) => x.id === req.params.id);
+    if (!m) return res.status(404).json({ error: "Ticket not found." });
+    const email = String(req.body.email || "").trim().toLowerCase();
+    if (m.email.toLowerCase() !== email) return res.status(403).json({ error: "Email mismatch." });
+    if (m.status === "closed") return res.status(400).json({ error: "This ticket is closed." });
+    const message = String(req.body.message || "").trim().slice(0, 2000);
+    if (message.length < 2) return res.status(400).json({ error: "Message too short." });
+    if (!m.replies) m.replies = [];
+    m.replies.push({ from: "Customer", message, createdAt: new Date().toISOString() });
+    await store.saveMessages(msgs);
+    res.json({ ok: true, ticket: m });
+  } catch (e) { res.status(500).json({ error: "Could not send reply." }); }
 });
 
 // Maintenance gate: when enabled from Admin → Settings, the storefront shows
@@ -412,7 +441,7 @@ app.post("/api/orders", async (req, res) => {
 // Public tracking by order number.
 app.get("/api/orders/:orderNo", async (req, res) => {
   try {
-    const orders = await withAutomation(await getOrders());
+    const orders = await getOrders();
     const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
     if (!o) return res.status(404).json({ error: "Order not found." });
     res.json(o);
@@ -437,6 +466,21 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
     await store.saveOrders(orders);
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not cancel the order." }); }
+});
+
+// Public cancellation feedback.
+app.post("/api/orders/:orderNo/feedback", async (req, res) => {
+  try {
+    const orders = await getOrders();
+    const o = orders.find((x) => x.orderNo.toLowerCase() === String(req.params.orderNo).toLowerCase());
+    if (!o) return res.status(404).json({ error: "Order not found." });
+    if (o.status !== "cancelled") return res.status(400).json({ error: "Feedback is only for cancelled orders." });
+    const reason = String(req.body.reason || "").trim().slice(0, 200);
+    const details = String(req.body.details || "").trim().slice(0, 1000);
+    o.cancellationFeedback = { reason, details, at: new Date().toISOString() };
+    await store.saveOrders(orders);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "Could not save feedback." }); }
 });
 
 /* ---------------- customer auth (server-side accounts, cross-device) ---------------- */
@@ -490,7 +534,7 @@ app.get("/api/auth/me", requireCustomer, (req, res) => res.json({
 // My order history (server is the source of truth when logged in).
 app.get("/api/auth/orders", requireCustomer, async (req, res) => {
   try {
-    const orders = await withAutomation(await getOrders());
+    const orders = await getOrders();
     res.json(orders.filter((o) => o.customerId && o.customerId === req.customer.id));
   } catch (e) { res.status(500).json({ error: "Could not load your orders." }); }
 });
@@ -807,59 +851,11 @@ app.delete("/api/admin/coupons/:code", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not delete the coupon." }); }
 });
 
-/* ---------------- delivery automation (chronological, every order) ---------------- */
-function applyAutomation(orders, now) {
-  let changed = false;
-  const STAGES_ARR = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
-  for (const o of orders) {
-    if (o.status === "cancelled" || o.status === "delivered") continue;
-    if (o.express) continue;
-    
-    const created = new Date(o.createdAt);
-    const day0 = new Date(created);
-    day0.setHours(0, 0, 0, 0);
-    const ms = 24 * 60 * 60 * 1000;
-    
-    const thresholds = [
-      { status: "processing", at: new Date(day0.getTime() + 1 * ms).setHours(17, 0, 0, 0) },
-      { status: "packed", at: new Date(day0.getTime() + 2 * ms).setHours(17, 0, 0, 0) },
-      { status: "shipped", at: new Date(day0.getTime() + 3 * ms).setHours(17, 0, 0, 0) },
-      { status: "out_for_delivery", at: new Date(day0.getTime() + 4 * ms).setHours(10, 0, 0, 0) },
-      { status: "delivered", at: new Date(day0.getTime() + 4 * ms).setHours(17, 0, 0, 0) }
-    ];
-    
-    const currIdx = STAGES_ARR.indexOf(o.status);
-    let targetIdx = currIdx;
-    for (let i = 0; i < thresholds.length; i++) {
-      if (now.getTime() >= thresholds[i].at) {
-        const tIdx = STAGES_ARR.indexOf(thresholds[i].status);
-        if (tIdx > targetIdx) targetIdx = tIdx;
-      }
-    }
-    
-    if (targetIdx > currIdx) {
-      for (let i = currIdx + 1; i <= targetIdx; i++) {
-        const next = STAGES_ARR[i];
-        const th = thresholds.find((t) => t.status === next);
-        o.status = next;
-        // Apply historical exact timestamps if we're catching up, so timeline looks perfectly scheduled
-        const runAt = Math.min(now.getTime(), th.at);
-        o.timeline.push({ stage: next, at: new Date(runAt).toISOString(), note: STAGE_NOTES[next] });
-      }
-      changed = true;
-    }
-  }
-  return changed;
-}
-async function withAutomation(orders) {
-  try { if (applyAutomation(orders, new Date())) await store.saveOrders(orders); }
-  catch { /* automation must never break reads */ }
-  return orders;
-}
+/* ---------------- delivery automation removed — all status changes are manual ---------------- */
 
 /* ---------------- admin: orders ---------------- */
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
-  try { res.json(await withAutomation(await getOrders())); }
+  try { res.json(await getOrders()); }
   catch (e) { res.status(500).json({ error: "Could not load orders." }); }
 });
 app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
@@ -869,7 +865,6 @@ app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
     if (!o) return res.status(404).json({ error: "Order not found." });
     const { status } = req.body || {};
     if (status === undefined) return res.status(400).json({ error: "Nothing to update." });
-    if (o.auto && o.auto.active) return res.status(400).json({ error: "Automation is running on this order — manual changes are locked." });
     if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
     o.status = status;
     o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
@@ -909,7 +904,7 @@ app.post("/api/admin/messages/:id/reply", requireAdmin, async (req, res) => {
         message: String(req.body.message || "").trim(),
         createdAt: new Date().toISOString()
       });
-      m.status = "pending"; // implicitly re-opens or keeps pending
+      m.status = "open"; // keep open until explicitly closed
       
       await store.saveMessages(msgs);
       res.json({ ok: true, ticket: m });
