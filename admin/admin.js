@@ -687,7 +687,7 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
           </table></div>
         `;
         
-        $("#view [data-mview]").forEach(b => {
+        $$("#view [data-mview]").forEach(b => {
           b.onclick = () => {
             const m = list.find(x => x.id === b.dataset.mview);
             if (!m) return;

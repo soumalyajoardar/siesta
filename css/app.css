@@ -407,7 +407,7 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
 .toast.success{border:1px solid var(--line)} /* Let success be plain/subtle */
 .toast.error{border:1px solid #E57373; color:#E57373}
 .toast button{margin-left:auto;background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:1rem;padding:0;display:flex;align-items:center;justify-content:center;transition:color .2s} .toast button:hover{color:var(--ink)}
-@keyframes toastPop{from{opacity:0;transform:translateY(24px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}to{opacity:1;transform:none}}
+@keyframes toastPop{from{opacity:0;transform:translateY(24px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 /* Modal */
 .modal-scrim{position:fixed;inset:0;background:rgba(20,20,20,.5);z-index:130;display:flex;align-items:center;justify-content:center;padding:1rem}

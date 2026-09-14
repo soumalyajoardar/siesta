@@ -309,138 +309,8 @@ export const StaticPages = {
       
       setTimeout(async () => {
         const u = await S.currentUser();
-        const userEmail = u ? u.email : "";
-        
         const form = document.getElementById("ctForm");
-        if (form && userEmail) form.querySelector("#ctEmail").value = userEmail;
-        
-        // Render tickets list
-        const renderTickets = async () => {
-          if (!userEmail) return;
-          const tContainer = document.getElementById("ticketsContainer");
-          if (!tContainer) return;
-          try {
-            const r = await fetch("/api/tickets?email=" + encodeURIComponent(userEmail));
-            const tickets = await r.json();
-            if (!Array.isArray(tickets) || tickets.length === 0) {
-              tContainer.innerHTML = "";
-              return;
-            }
-            tContainer.innerHTML = `<h2 style="margin-top:2.5rem">Your Support Tickets</h2>` + tickets.map(t => `
-              <div class="ticket-card" style="border:1px solid var(--line);border-radius:10px;padding:1.2rem;margin-top:1rem;background:var(--sand)">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-                  <strong>Ticket #${esc(t.id.slice(0, 8).toUpperCase())}</strong>
-                  <span class="pill ${t.status === 'closed' ? '' : 'warn'}" style="text-transform:uppercase;font-size:.75rem">${esc(t.status || 'open')}</span>
-                </div>
-                <p class="muted" style="font-size:.88rem;margin:0">${esc(t.message.slice(0, 120))}${t.message.length > 120 ? "..." : ""}</p>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.6rem">
-                  <span class="muted" style="font-size:.8rem">${new Date(t.createdAt).toLocaleDateString("en-IN")} · ${(t.replies || []).length} replies</span>
-                  <button class="link-btn" data-ticket="${esc(t.id)}">Open Chat →</button>
-                </div>
-              </div>
-            `).join("");
-            
-            // Wire up chat buttons
-            tContainer.querySelectorAll("[data-ticket]").forEach(btn => {
-              btn.onclick = () => openTicketChat(tickets.find(t => t.id === btn.dataset.ticket), userEmail);
-            });
-          } catch(e) {}
-        };
-        
-        // Open chat modal for a ticket
-        const openTicketChat = (ticket, email) => {
-          if (!ticket) return;
-          let pollTimer = null;
-          
-          const renderChat = (t) => {
-            const { close, el } = openModal(`Ticket #${t.id.slice(0, 8).toUpperCase()}`, `
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-                <span class="muted" style="font-size:.85rem">Status:</span>
-                <span class="pill ${t.status === 'closed' ? '' : 'warn'}" style="text-transform:uppercase;font-size:.75rem">${esc(t.status || 'open')}</span>
-              </div>
-              <div id="chatMessages" style="max-height:45vh;overflow-y:auto;display:flex;flex-direction:column;gap:.6rem;padding:.5rem 0">
-                <div style="background:var(--sand);padding:.8rem 1rem;border-radius:12px 12px 12px 4px;max-width:85%;align-self:flex-start">
-                  <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.3rem"><strong>You</strong> · ${new Date(t.createdAt).toLocaleString("en-IN")}</div>
-                  <p style="margin:0;font-size:.92rem;white-space:pre-wrap">${esc(t.message)}</p>
-                </div>
-                ${(t.replies || []).map(r => r.from === "Admin" ? `
-                  <div style="background:#E9F5E9;padding:.8rem 1rem;border-radius:12px 12px 4px 12px;max-width:85%;align-self:flex-end">
-                    <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.3rem;text-align:right"><strong>Siesta Support</strong> · ${new Date(r.createdAt).toLocaleString("en-IN")}</div>
-                    <p style="margin:0;font-size:.92rem;white-space:pre-wrap">${esc(r.message)}</p>
-                  </div>
-                ` : `
-                  <div style="background:var(--sand);padding:.8rem 1rem;border-radius:12px 12px 12px 4px;max-width:85%;align-self:flex-start">
-                    <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.3rem"><strong>You</strong> · ${new Date(r.createdAt).toLocaleString("en-IN")}</div>
-                    <p style="margin:0;font-size:.92rem;white-space:pre-wrap">${esc(r.message)}</p>
-                  </div>
-                `).join("")}
-              </div>
-              ${t.status !== "closed" ? `
-                <div style="display:flex;gap:.5rem;margin-top:1rem;align-items:flex-end">
-                  <textarea id="chatReply" class="input" rows="2" placeholder="Type your reply..." style="flex:1;resize:none"></textarea>
-                  <button class="btn btn-dark" id="chatSend" style="flex-shrink:0">Send</button>
-                </div>
-              ` : `<p class="muted" style="text-align:center;margin-top:1rem;font-size:.9rem">This ticket has been closed.</p>`}
-            `);
-            
-            // Scroll chat to bottom
-            const chatBox = el.querySelector("#chatMessages");
-            if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
-            
-            // Wire send button
-            if (t.status !== "closed") {
-              const sendBtn = el.querySelector("#chatSend");
-              const replyBox = el.querySelector("#chatReply");
-              sendBtn.onclick = async () => {
-                const msg = replyBox.value.trim();
-                if (msg.length < 2) { toast("Message too short.", "error"); return; }
-                sendBtn.disabled = true;
-                try {
-                  const r = await fetch("/api/tickets/" + encodeURIComponent(t.id) + "/reply", {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ email, message: msg })
-                  });
-                  const data = await r.json();
-                  if (!r.ok) throw new Error(data.error || "Failed to send.");
-                  t.replies = data.ticket.replies;
-                  t.status = data.ticket.status;
-                  close();
-                  if (pollTimer) clearInterval(pollTimer);
-                  renderChat(t);
-                } catch (e) { toast(e.message, "error"); sendBtn.disabled = false; }
-              };
-              replyBox.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } });
-            }
-            
-            // Poll for new replies every 15 seconds
-            pollTimer = setInterval(async () => {
-              try {
-                const r = await fetch("/api/tickets?email=" + encodeURIComponent(email));
-                const all = await r.json();
-                const fresh = all.find(x => x.id === t.id);
-                if (fresh && (fresh.replies || []).length !== (t.replies || []).length) {
-                  t.replies = fresh.replies;
-                  t.status = fresh.status;
-                  close();
-                  renderChat(t);
-                }
-              } catch {}
-            }, 15000);
-            
-            // Clean up poll on modal close
-            const obs = new MutationObserver(() => {
-              if (!document.querySelector(".modal-scrim")) {
-                if (pollTimer) clearInterval(pollTimer);
-                obs.disconnect();
-                renderTickets();
-              }
-            });
-            obs.observe(document.getElementById("modalRoot"), { childList: true });
-          };
-          
-          renderChat(ticket);
-        };
-        
+        if (form && u?.email) form.querySelector("#ctEmail").value = u.email;
         if (form) {
           form.onsubmit = async (e) => {
             e.preventDefault();
@@ -456,30 +326,14 @@ export const StaticPages = {
               if (!r.ok) throw new Error(data.error || "Could not send message.");
               
               e.target.reset();
-              toast("Your support ticket has been created!");
-              
-              // Refresh tickets list to show the new one
-              await renderTickets();
-              
-              // If we got a ticket ID back and user is logged in, open the chat directly
-              if (data.ticketId && userEmail) {
-                try {
-                  const tr = await fetch("/api/tickets?email=" + encodeURIComponent(userEmail));
-                  const tickets = await tr.json();
-                  const newTicket = tickets.find(t => t.id === data.ticketId);
-                  if (newTicket) openTicketChat(newTicket, userEmail);
-                } catch {}
-              }
+              const { close } = openModal("Support Request Received", `<p>Our system will connect you with a live representative soon!</p><div style="text-align:right;margin-top:1.5rem"><button class="btn btn-dark" data-close>Acknowledge</button></div>`);
             } catch (err) { toast(err.message, "error"); }
             finally { btn.disabled = false; }
           };
         }
-        
-        // Load existing tickets on page load
-        await renderTickets();
       }, 50);
 
-      return `<div class="page"><div class="prose"><h1>Contact us</h1><p>Support email: <strong>${esc(biz(BUSINESS.supportEmail))}</strong><br/>Phone: <strong>${esc(biz(BUSINESS.supportPhone))}</strong><br/>Hours: ${esc(biz(BUSINESS.hours))}<br/>Address: ${esc(biz(BUSINESS.businessAddress))}</p><form id="ctForm" class="form-grid" style="margin-top:1rem"><div class="field"><label for="ctName">Name *</label><input id="ctName" name="name" class="input" autocomplete="name"/></div><div class="field"><label for="ctEmail">Email *</label><input id="ctEmail" name="email" type="email" class="input" autocomplete="email"/></div><div class="field full"><label for="ctMsg">How can we help? *</label><textarea id="ctMsg" name="message" class="input" rows="5" placeholder="Order number (if any) + your question"></textarea></div><div class="full"><button class="btn btn-dark" type="submit">Send Message</button></div></form><div id="ticketsContainer"></div></div></div>`;
+      return `<div class="page"><div class="prose"><h1>Contact us</h1><p>Support email: <strong>${esc(biz(BUSINESS.supportEmail))}</strong><br/>Phone: <strong>${esc(biz(BUSINESS.supportPhone))}</strong><br/>Hours: ${esc(biz(BUSINESS.hours))}<br/>Address: ${esc(biz(BUSINESS.businessAddress))}</p><form id="ctForm" class="form-grid" style="margin-top:1rem"><div class="field"><label for="ctName">Name *</label><input id="ctName" name="name" class="input" autocomplete="name"/></div><div class="field"><label for="ctEmail">Email *</label><input id="ctEmail" name="email" type="email" class="input" autocomplete="email"/></div><div class="field full"><label for="ctMsg">How can we help? *</label><textarea id="ctMsg" name="message" class="input" rows="5" placeholder="Order number (if any) + your question"></textarea></div><div class="full"><button class="btn btn-dark" type="submit">Send Message</button></div></form></div></div>`;
     },
     faq: () => prose("Frequently Asked Questions", `<h2>Which payment methods do you accept?</h2><p>Cash on Delivery only, right now. UPI, cards, net-banking and wallets are labelled “Coming soon” and cannot be selected until a licensed payment partner is integrated.</p><h2>How long is delivery?</h2><p>Typically 3–6 business days across India. Orders ship within 24 hours on working days.</p><h2>What is the return policy?</h2><p>7-day easy returns on unworn items with tags. COD amounts are refunded via bank transfer/UPI after quality check. See <a href="/returns">Returns & Refunds</a>.</p><h2>How do I track my order?</h2><p>Use <a href="/track">Track Order</a> with your 16-digit order number from the confirmation screen.</p><h2>Do you have physical stores?</h2><p>Not yet — Siesta is online-only.</p>`),
   shipping: () => prose("Shipping Policy", `<p>We ship across India. Orders are packed within 24 hours on working days. Standard delivery takes 3–6 business days. Shipping is a flat ${inr(79)} and <strong>free on orders of ${inr(1499)} or more</strong> (after discounts).</p><h2>Cash on Delivery</h2><p>COD is available on orders up to ${inr(20000)}. Please keep the exact order total ready. Our courier partner will share an OTP where applicable.</p><h2>Delays</h2><p>Weather, public holidays and remote PIN codes can add 1–3 days. If your parcel is delayed beyond 8 days, contact support with your order number.</p>`),
