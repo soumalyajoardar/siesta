@@ -315,9 +315,21 @@ li.active .tick{border-color:var(--forest)}
 
 /* Timeline: connectors drawn per step so the line always starts/ends exactly
    at a dot — never overshooting, regardless of step content height. */
+/* Timeline: horizontal */
+.timeline.horizontal { display: flex; justify-content: space-between; position: relative; padding: 0; margin: 2.5rem 0; list-style: none; }
+.timeline.horizontal::before { content: ""; position: absolute; top: 9px; left: 8.33%; right: 8.33%; height: 2px; background: var(--line-2); z-index: 0; }
+.timeline.horizontal::after { content: ""; position: absolute; top: 9px; left: 8.33%; width: calc(var(--fill, 0%) * 0.8333); height: 2px; background: var(--forest); z-index: 0; transition: width 0.4s var(--ease); }
+.timeline.horizontal li { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0; position: relative; z-index: 1; }
+.timeline.horizontal li::before { display: none !important; }
+.timeline.horizontal .dot { position: relative; left: auto; top: auto; margin-bottom: 0.5rem; }
+.timeline.horizontal strong { font-size: 0.8rem; line-height: 1.1; margin-bottom: 0.2rem; }
+.timeline.horizontal time, .timeline.horizontal .t-sub { font-size: 0.7rem; display: none; }
+@media (min-width: 680px) { .timeline.horizontal time, .timeline.horizontal .t-sub { display: block; } }
+
+/* Timeline: vertical (default) */
 .timeline{list-style:none;margin:0;padding:0;position:relative}
-.timeline li:not(:last-child)::before{content:"";position:absolute;left:11px;top:12px;bottom:0;width:2px;border-radius:2px;background:var(--line-2)}
-.timeline li:last-child::before{content:"";position:absolute;left:11px;top:0;height:12px;width:2px;border-radius:2px;background:var(--line-2)}
+.timeline:not(.horizontal) li:not(:last-child)::before{content:"";position:absolute;left:11px;top:12px;bottom:0;width:2px;border-radius:2px;background:var(--line-2)}
+.timeline:not(.horizontal) li:last-child::before{content:"";position:absolute;left:11px;top:0;height:12px;width:2px;border-radius:2px;background:var(--line-2)}
 .timeline li.line-active::before{background:linear-gradient(180deg,var(--forest),#4C7A6C);animation:segIn .5s var(--ease) both}
 @keyframes segIn{from{opacity:0}to{opacity:1}}
 .timeline li{position:relative;z-index:1;padding:0 0 1.2rem 2.2rem}

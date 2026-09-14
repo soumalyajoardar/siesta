@@ -451,13 +451,13 @@ function trackHTML(o) {
 
   const pct = Math.round(((o.stageIndex ?? 0) / (stages.length - 1)) * 100);
   const stepNo = Math.min((o.stageIndex ?? 0) + 1, stages.length);
-  const etaDays = Math.max(0, Math.ceil((new Date(o.createdAt).getTime() + 5 * 86400000 - Date.now()) / 86400000));
+  const dInfo = S.deliveryInfo(o);
   const isExpress = Boolean(o.express) && o.status !== "delivered";
   const etaText = o.status === "delivered"
     ? "Delivered — enjoy!"
     : isExpress
       ? `Arriving ${o.express.option === "tomorrow" ? "Tomorrow" : "Today"}`
-      : etaDays <= 0 ? "Arriving today" : `Arriving in ${etaDays} day${etaDays === 1 ? "" : "s"}`;
+      : dInfo ? dInfo.headline : "Arriving soon";
   return `${crumbs}
   <div class="split"><div class="card track-card">
       <div class="track-hero">
@@ -468,8 +468,8 @@ function trackHTML(o) {
         </div>
         <button class="order-chip" data-copy="${esc(o.orderNo)}" aria-label="Copy order number ${esc(o.orderNo)}"><span class="muted">Order</span><strong>${esc(o.orderNo)}</strong><span class="copy-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></span></button>
       </div>
-      <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:${pct}%"></span></div>
-    <ol class="timeline" style="--fill:${pct}%">${stages.map((s, i) => { 
+      <div class="tl-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress" style="display:none"><span style="width:${pct}%"></span></div>
+    <ol class="timeline horizontal" style="--fill:${pct}%">${stages.map((s, i) => { 
   const hit = o.timeline.find((t) => t.stage === s); 
   const done = !!hit; 
   const cur = o.status === s; 

@@ -799,6 +799,8 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
             if (expressOpt === "tomorrow" && new Date(o.express?.at || o.createdAt).toLocaleDateString("en-IN") !== new Date().toLocaleDateString("en-IN")) {
               expressOpt = "today";
             }
+            const stages = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
+            const sIdx = stages.indexOf(o.status);
             return `
             <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
               <div><strong>${esc(o.orderNo)}</strong>${o.express ? ' <span class="pill">Express</span>' : ""}<br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
@@ -806,11 +808,23 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
               ${o.status === "cancelled" && o.cancellationFeedback ? `<div style="margin-top:.6rem;padding:.6rem;background:var(--sand);border-radius:6px;border:1px solid var(--line);font-size:.85rem"><strong>Cancellation Feedback:</strong> ${esc(o.cancellationFeedback.reason)}${o.cancellationFeedback.details ? ` - ${esc(o.cancellationFeedback.details)}` : ""}</div>` : ""}
               </div>
               <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
-              <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+              ${o.status === "cancelled" ? '<span class="pill warn" style="margin-top:.4rem;display:inline-block">CANCELLED</span><br/>' : ''}
               <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
-            </div></div>`}).join("") || "<p class='muted'>No orders in this state.</p>";
+            </div>
+            ${o.status === "cancelled" ? "" : `
+            <div class="admin-timeline" style="margin-top:1.2rem; border-top:1px solid var(--line-2); padding-top:1.2rem;">
+              <input type="range" class="status-slider" data-os="${esc(o.orderNo)}" min="0" max="5" value="${Math.max(0, sIdx)}" style="width:100%; cursor:pointer; accent-color:var(--forest);" />
+              <div style="display:flex; justify-content:space-between; font-size:.78rem; color:var(--muted); margin-top:.5rem; position:relative;">
+                ${["Confirm", "Process", "Pack", "Ship", "OFD", "Delivery"].map((lbl, i) => `<span style="text-align:center; width:60px; transform:translateX(-50%); position:absolute; left:${(i/5)*100}%; ${i === sIdx ? 'color:var(--ink);font-weight:700' : ''}">${lbl}</span>`).join("")}
+              </div>
+              <div style="height:20px"></div>
+            </div>
+            `}
+            </div>`}).join("") || "<p class='muted'>No orders in this state.</p>";
         $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
-          try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
+          const stages = ["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered"];
+          const newStatus = stages[parseInt(sel.value, 10)] || "confirmed";
+          try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: newStatus }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
           catch (e) { toast(e.message, "error"); vOrders(); }
         }));
         $$("#olist [data-odel]").forEach((b) => (b.onclick = async () => {
