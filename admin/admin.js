@@ -1,0 +1,966 @@
+// Siesta Admin dashboard (vanilla JS, same-origin API).
+(function () {
+  "use strict";
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
+  const esc = (s = "") => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
+  const TOKEN_KEY = "siesta.admin.token";
+  const getToken = () => sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+
+  function toast(msg, type = "success") {
+    const el = document.createElement("div");
+    el.className = "toast " + type;
+    el.textContent = msg;
+    $("#toasts").appendChild(el);
+    setTimeout(() => el.remove(), 3800);
+  }
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + (getToken() || ""), ...(opts.headers || {}) },
+    });
+    let data = null;
+    try { data = await r.json(); } catch {}
+    if (r.status === 401) { showLogin(); throw new Error("Session expired. Please log in again."); }
+    if (!r.ok) throw new Error((data && data.error) || "Request failed.");
+    return data;
+  }
+
+  // Shrink big uploads in-browser (WebP, max 1400px) so store photos stay
+  // light. GIFs (possibly animated) and small files pass through untouched.
+  async function compressImage(file) {
+    try {
+      if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+      if (file.size < 400 * 1024 || !("createImageBitmap" in window)) return file;
+      const bmp = await createImageBitmap(file);
+      const max = 1400;
+      const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      if (scale >= 1) { bmp.close?.(); return file; }
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * scale);
+      c.height = Math.round(bmp.height * scale);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const blob = await new Promise((res) => c.toBlob(res, "image/webp", 0.82));
+      if (!blob || blob.size >= file.size) return file;
+      return new File([blob], file.name.replace(/\.[a-z0-9]+$/i, "") + ".webp", { type: "image/webp" });
+    } catch { return file; }
+  }
+
+  async function uploadFiles(files) {
+    const fd = new FormData();
+    for (const f of [...files]) fd.append("images", await compressImage(f));
+    const r = await fetch("/api/admin/upload", { method: "POST", headers: { Authorization: "Bearer " + getToken() }, body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Upload failed.");
+    return data;
+  }
+
+  /* ---------- auth gate ---------- */
+  function showLogin() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    $("#loginView").hidden = false;
+    $("#dashView").hidden = true;
+  }
+  function showDash() {
+    $("#loginView").hidden = true;
+    $("#dashView").hidden = false;
+    nav("overview");
+  }
+  $("#loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    $("#loginErr").textContent = "";
+    try {
+      const r = await fetch("/api/admin/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: fd.get("username"), password: fd.get("password"), remember: !!fd.get("remember") }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Login failed.");
+      if (fd.get("remember")) localStorage.setItem(TOKEN_KEY, data.token);
+      else sessionStorage.setItem(TOKEN_KEY, data.token);
+      toast("Welcome back.");
+      showDash();
+    } catch (err) { $("#loginErr").textContent = err.message; }
+  });
+  $("#logoutBtn").addEventListener("click", showLogin);
+
+  /* ---------- router ---------- */
+  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", customers: "Customers", reviews: "Reviews", messages: "Messages", coupons: "Coupons", media: "Media Library", settings: "Settings" };
+  let productsCache = [];
+  function nav(view) {
+    $$("#sideNav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+    $("#viewTitle").textContent = TITLES[view];
+    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, customers: vCustomers, reviews: vReviews, messages: vMessages, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
+  }
+  $("#sideNav").addEventListener("click", (e) => { if (e.target.dataset.view) nav(e.target.dataset.view); });
+
+  /* ---------- overview ---------- */
+  async function vOverview() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const s = await api("/api/admin/stats");
+      $("#view").innerHTML = `
+        <div class="stat-grid">
+          <div class="stat"><span>Revenue (COD)</span><strong>${inr(s.revenue)}</strong></div>
+          <div class="stat"><span>Orders</span><strong>${s.orders}</strong></div>
+          <div class="stat"><span>Products</span><strong>${s.products}</strong></div>
+          <div class="stat"><span>Low stock (≤5)</span><strong>${s.lowStock.length}</strong></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><h3>Orders by status</h3>${Object.entries(s.byStatus).map(([k, v]) => `<p>${esc(k.replace(/_/g, " "))}: <strong>${v}</strong></p>`).join("") || "<p class='muted'>No orders yet.</p>"}</div>
+          <div class="card"><h3>Needs restock</h3>${s.lowStock.map((p) => `<p><a href="#" data-edit="${esc(p.id)}">${esc(p.name)}</a> — <strong>${p.stock} left</strong></p>`).join("") || "<p class='muted'>All stocked up.</p>"}</div>
+        </div>
+        <div class="card"><h3>Recent orders</h3>${s.recent.map((o) => `<p><strong>${esc(o.orderNo)}</strong> · ${inr(o.amounts.total)} · <span class="pill">${esc(o.status)}</span></p>`).join("") || "<p class='muted'>No orders yet.</p>"}</div>`;
+      $$("#view [data-edit]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); openProductEditor(a.dataset.edit); }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- products ---------- */
+  async function vProducts() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      productsCache = await api("/api/admin/products");
+      renderProductTable("");
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+  function renderProductTable(filter) {
+    const list = productsCache.filter((p) => !filter || (p.name + p.category).toLowerCase().includes(filter.toLowerCase()));
+    $("#view").innerHTML = `
+      <div class="toolbar">
+        <input type="search" id="pq" placeholder="Search products…" value="${esc(filter)}" aria-label="Search products" />
+        <span class="muted small">${list.length} products</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-dark btn-sm" id="addP">+ Add Product</button>
+      </div>
+      <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+        <tr><th></th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr>
+        ${list.map((p) => `<tr>
+          <td>${p.images && p.images[0] ? `<img class="thumb" src="${esc(p.images[0])}" alt="" loading="lazy" />` : `<span class="thumb-ph">S</span>`}</td>
+          <td><strong>${esc(p.name)}</strong><br /><span class="muted small">${esc(p.gender)}</span></td>
+          <td>${esc(p.category)}</td>
+          <td>${inr(p.price)} <span class="muted small"><s>${inr(p.mrp)}</s></span></td>
+          <td>${p.stock <= 0 ? '<span class="pill">Out</span>' : p.stock <= 5 ? `<span class="pill warn">${p.stock} low</span>` : p.stock}</td>
+          <td>${p.isNew ? '<span class="pill ok">New</span> ' : ""}${p.bestseller ? '<span class="pill">Best</span>' : ""}</td>
+          <td><div class="row-actions"><button class="btn btn-light btn-sm" data-edit="${esc(p.id)}">Edit</button><button class="btn btn-light btn-sm" data-del="${esc(p.id)}">Delete</button></div></td>
+        </tr>`).join("") || `<tr><td colspan="7" class="muted">No products match.</td></tr>`}
+      </table></div>`;
+    $("#pq").addEventListener("input", (e) => renderProductTable(e.target.value));
+    $("#addP").addEventListener("click", () => openProductEditor(null));
+    $$("#view [data-edit]").forEach((b) => (b.onclick = () => openProductEditor(b.dataset.edit)));
+    $$("#view [data-del]").forEach((b) => (b.onclick = async () => {
+      if (!confirm(`Delete "${b.dataset.del}" permanently?`)) return;
+      try { await api("/api/admin/products/" + encodeURIComponent(b.dataset.del), { method: "DELETE" }); toast("Product deleted."); vProducts(); }
+      catch (e) { toast(e.message, "error"); }
+    }));
+  }
+
+  function openProductEditor(id) {
+    const p = id ? productsCache.find((x) => x.id === id) : { name: "", category: "tshirts", gender: "unisex", price: 999, mrp: 1499, colors: [{ name: "Default", hex: "#999999" }], sizes: ["S", "M", "L", "XL"], stock: 10, material: "", care: "", desc: "", details: [], isNew: true, bestseller: false, images: [] };
+    if (id && !p) return;
+    const root = $("#modalRoot");
+    root.innerHTML = `
+    <div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true" aria-label="${id ? "Edit product" : "Add product"}">
+      <div class="modal-head"><strong>${id ? "Edit product" : "Add product"}</strong><button class="btn btn-light btn-sm" id="mClose">Close ✕</button></div>
+      <div class="modal-body"><form id="pForm">
+        <div class="grid-2">
+          <div class="field"><label>Product name *</label><input class="input" name="name" value="${esc(p.name)}" required /></div>
+          
+          <div class="field"><label>Category</label><select class="input" name="category">${["tshirts", "shirts", "jackets", "hoodies", "jeans", "pants", "shorts", "sweatshirts"].map((c) => `<option ${p.category === c ? "selected" : ""}>${c}</option>`).join("")}</select></div>
+          <div class="field"><label>Gender</label><select class="input" name="gender">${["men", "women", "unisex"].map((g) => `<option ${p.gender === g ? "selected" : ""}>${g}</option>`).join("")}</select></div>
+          <div class="field"><label>Price (₹) *</label><input class="input" name="price" type="number" min="1" value="${p.price}" required /></div>
+          <div class="field"><label>MRP (₹)</label><input class="input" name="mrp" type="number" min="1" value="${p.mrp}" /></div>
+          <div class="field"><label>Stock *</label><input class="input" name="stock" type="number" min="0" value="${p.stock}" required /></div>
+          <div class="field"><label>Sizes (comma separated) *</label><input class="input" name="sizes" value="${esc(p.sizes.join(", "))}" /></div>
+        </div>
+        <div class="field"><label>Colours — one per line as <code>Name:#hex</code></label><textarea class="input" name="colors" rows="3">${esc(p.colors.map((c) => `${c.name}:${c.hex}`).join("\n"))}</textarea></div>
+        <div class="field"><label>Material</label><input class="input" name="material" value="${esc(p.material || "")}" /></div>
+        <div class="field"><label>Description</label><textarea class="input" name="desc" rows="3">${esc(p.desc || "")}</textarea></div>
+        <div class="field"><label>Care instructions</label><input class="input" name="care" value="${esc(p.care || "")}" /></div>
+        <div class="field"><label>Details — one per line</label><textarea class="input" name="details" rows="3">${esc((p.details || []).join("\n"))}</textarea></div>
+        <div style="display:flex;gap:1rem;margin:.4rem 0;flex-wrap:wrap"><label class="check-row"><input type="checkbox" name="isNew" ${p.isNew ? "checked" : ""} /> New arrival</label><label class="check-row"><input type="checkbox" name="bestseller" ${p.bestseller ? "checked" : ""} /> Best seller</label><label class="check-row" title="Generates 10-30 fake reviews (~4.3 avg) when saving"><input type="checkbox" name="autoReviews" ${id ? "" : "checked"} /> Auto-generate reviews</label></div>
+        <div class="field"><label>Product images <span class="muted">(first image = cover)</span></label>
+          <div class="img-grid" id="imgGrid"></div>
+          <label class="drop">Click or drop images here to upload (JPG/PNG/WebP/GIF/AVIF, ≤5MB each)<input type="file" id="imgInput" accept="image/*" multiple /></label>
+          <div style="display:flex;gap:.5rem;margin-top:.6rem"><input class="input" id="imgUrl" placeholder="…or paste a folder URL like /images/tee-front.webp" style="flex:1" /><button type="button" class="btn btn-light btn-sm" id="imgUrlAdd">Add</button></div>
+          <div style="margin-top:.6rem;text-align:right;"><button type="button" class="btn btn-light btn-sm" id="genPromptBtn">✨ Copy AI Image Prompt</button></div>
+        </div>
+        <p class="err" id="pErr"></p>
+        <button class="btn btn-dark btn-block" type="submit">${id ? "Save Changes" : "Create Product"}</button>
+      </form></div>
+    </div></div>`;
+    let images = [...(p.images || [])];
+    const grid = $("#imgGrid");
+    const drawImgs = () => {
+      grid.innerHTML = images.map((u, i) => `<div class="img-cell"><img src="${esc(u)}" alt="" loading="lazy" />${i === 0 ? '<span class="tag">Cover</span>' : ""}<button data-rm="${i}" aria-label="Remove image">✕</button></div>`).join("") || "<p class='muted small'>No images — the store shows an illustration placeholder.</p>";
+      $$("#imgGrid [data-rm]").forEach((b) => (b.onclick = () => { images.splice(Number(b.dataset.rm), 1); drawImgs(); }));
+    };
+    drawImgs();
+    const genBtn = $("#genPromptBtn");
+    if (genBtn) {
+      genBtn.addEventListener("click", () => {
+        const form = $("#pForm");
+        if (!form) return;
+        const fd = new FormData(form);
+          const name = fd.get("name") || "stylish clothing";
+          let gender = fd.get("gender") || "unisex";
+          if (gender === "unisex") gender = "male or female";
+          if (gender === "men") gender = "male";
+          if (gender === "women") gender = "female";
+          const desc = fd.get("desc") || "";
+          const colorLines = String(fd.get("colors") || "").split("\n").map(x => x.split(":")[0].trim()).filter(Boolean).join(" and ");
+          const colors = colorLines ? ` in ${colorLines}` : "";
+          const material = fd.get("material") ? ` made of ${fd.get("material")}` : "";
+          const prompt = `Create one hyper-realistic professional fashion photograph of an Indian ${gender} adult model posing naturally for a premium commercial clothing campaign, wearing ${name}${colors}${material}. ${desc ? "\\n\\n" + desc : ""}
+
+The image should look like a genuine photograph from a high-end professional fashion/e-commerce studio shoot, captured with a professional full-frame camera.
+
+The model should have a natural, confident, relaxed pose that clearly showcases the fit, silhouette, fabric, sleeves, collar, and overall appearance of the clothing. Keep the pose stylish but understated and suitable for a premium clothing brand.
+
+Use a slightly close-up portrait composition, 4:5 aspect ratio, with the clothing filling most of the frame while maintaining comfortable margins.
+
+Background: seamless warm off-white studio background, approximately #F1ECE3 to #EFE9DD. Clean, minimal, and distraction-free.
+
+Lighting: soft, diffused, daylight-balanced professional studio lighting with gentle fill from both sides. Natural skin tones, realistic fabric texture, accurate clothing color, and very soft shadows.
+
+The clothing must look physically real, with authentic fabric texture, stitching, folds, seams, and natural draping. Accurately preserve the color without changing its hue or saturation.
+
+Add a subtle “Siesta.” logo naturally onto the clothing as if it is genuinely printed or embroidered on the garment.
+
+No props, no furniture, no scenery, no additional people, no promotional graphics, no sale badges, no watermark, no text other than the Siesta logo, and no artificial/CGI appearance.
+
+Style: premium, minimal, modern, photorealistic, sophisticated commercial fashion photography.`;
+          navigator.clipboard.writeText(prompt).then(() => {
+          toast("Prompt copied to clipboard!");
+        }).catch(() => {
+          window.prompt("Copy this prompt:", prompt);
+        });
+      });
+    }
+    $("#imgInput").addEventListener("change", async (e) => {
+      if (!e.target.files.length) return;
+      try {
+        toast("Uploading…");
+        const up = await uploadFiles(e.target.files);
+        images.push(...up.map((f) => f.url));
+        drawImgs();
+        toast(`${up.length} image(s) uploaded.`);
+      } catch (err) { toast(err.message, "error"); }
+      e.target.value = "";
+    });
+    $("#imgUrlAdd").addEventListener("click", () => {
+      const u = $("#imgUrl").value.trim();
+      if (!/^\/(uploads|images)\/[^/]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a valid store URL like /images/tee-front.webp", "error"); return; }
+      if (images.length >= 8) { toast("Maximum 8 images per product.", "error"); return; }
+      images.push(u);
+      $("#imgUrl").value = "";
+      drawImgs();
+    });
+    $("#mClose").addEventListener("click", () => (root.innerHTML = ""));
+    root.querySelector(".modal-scrim").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-scrim")) root.innerHTML = ""; });
+    
+      $("#pForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const colors = String(fd.get("colors")).split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+        const [name, hex] = l.split(":").map((s) => s.trim());
+        return { name: name || "Default", hex: /^#[0-9a-fA-F]{6}$/.test(hex || "") ? hex : "#999999" };
+      });
+      const body = {
+        name: fd.get("name"), category: fd.get("category"), gender: fd.get("gender"),
+        price: Number(fd.get("price")), mrp: Number(fd.get("mrp")), stock: Number(fd.get("stock")),
+        sizes: String(fd.get("sizes")).split(",").map((s) => s.trim()).filter(Boolean),
+        colors: colors.length ? colors : [{ name: "Default", hex: "#999999" }],
+        material: fd.get("material"), care: fd.get("care"), desc: fd.get("desc"),
+        details: String(fd.get("details")).split("\n").map((s) => s.trim()).filter(Boolean),
+        isNew: !!fd.get("isNew"), bestseller: !!fd.get("bestseller"), autoReviews: !!fd.get("autoReviews"), images,
+      };
+      try {
+        if (id) await api("/api/admin/products/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(body) });
+        else await api("/api/admin/products", { method: "POST", body: JSON.stringify(body) });
+        root.innerHTML = "";
+        toast(id ? "Product saved." : "Product created.");
+        vProducts();
+      } catch (err) { $("#pErr").textContent = err.message; }
+    });
+  }
+
+  /* ---------- events ---------- */
+  async function vEvents() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/events");
+      const fmt = (d) => (d ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—");
+      $("#view").innerHTML = `
+        <div class="toolbar"><span class="muted small">${list.length} events · only active ones in date show on the store homepage</span><span style="flex:1"></span><button class="btn btn-dark btn-sm" id="addE">+ New Event</button></div>
+        ${list.map((e) => `<div class="card"><div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+          ${e.image ? `<img class="thumb" style="width:90px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--line)" src="${esc(e.image)}" alt="" loading="lazy" />` : `<span class="thumb-ph" style="width:90px;height:64px">✦</span>`}
+          <div style="flex:1;min-width:200px"><strong>${esc(e.title)}</strong> ${e.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Hidden</span>'}<br />
+          <span class="muted small">${esc(e.badge || e.subtitle || "")} · ${fmt(e.startsAt)} → ${fmt(e.endsAt)} · <a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.cta)}</a></span></div>
+          <div class="row-actions"><button class="btn btn-light btn-sm" data-eedit="${esc(e.id)}">Edit</button><button class="btn btn-light btn-sm" data-edel="${esc(e.id)}">Delete</button></div>
+        </div></div>`).join("") || "<div class='card'><p class='muted'>No events yet. Create one for your next sale, drop or festive edit.</p></div>"}`;
+      $("#addE").addEventListener("click", () => openEventEditor(null));
+      $$("#view [data-eedit]").forEach((b) => (b.onclick = () => openEventEditor(b.dataset.eedit)));
+      $$("#view [data-edel]").forEach((b) => (b.onclick = async () => {
+        if (!confirm("Delete this event? It will disappear from the store homepage.")) return;
+        try { await api("/api/admin/events/" + encodeURIComponent(b.dataset.edel), { method: "DELETE" }); toast("Event deleted."); vEvents(); }
+        catch (e) { toast(e.message, "error"); }
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  async function openEventEditor(id) {
+    let e = { title: "", subtitle: "", description: "", badge: "", image: "", gallery: [], cta: "Shop Now", link: "#/shop?filter=sale", startsAt: "", endsAt: "", active: true, sort: 0 };
+    if (id) {
+      try {
+        const found = (await api("/api/admin/events")).find((x) => x.id === id);
+        if (!found) { toast("Event not found.", "error"); return; }
+        e = found;
+      } catch (err) { toast(err.message, "error"); return; }
+    }
+    const root = $("#modalRoot");
+    root.innerHTML = `
+    <div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true" aria-label="${id ? "Edit event" : "New event"}">
+      <div class="modal-head"><strong>${id ? "Edit event" : "New event"}</strong><button class="btn btn-light btn-sm" id="mClose">Close ✕</button></div>
+      <div class="modal-body"><form id="eForm">
+        <div class="grid-2">
+          <div class="field"><label>Event title *</label><input class="input" name="title" value="${esc(e.title)}" placeholder="Diwali Festive Edit" required /></div>
+          <div class="field"><label>Badge (short highlight)</label><input class="input" name="badge" value="${esc(e.badge || "")}" placeholder="Up to 40% off" /></div>
+        </div>
+        <div class="field"><label>Subtitle</label><input class="input" name="subtitle" value="${esc(e.subtitle || "")}" placeholder="One line under the title" /></div>
+        <div class="field"><label>Description</label><textarea class="input" name="description" rows="3" placeholder="What is this event about?">${esc(e.description || "")}</textarea></div>
+        <div class="field"><label>Banner image <span class="muted">(landscape works best, shown on homepage)</span></label>
+          <div class="img-grid" id="eImgGrid"></div>
+          <label class="drop">Click or drop a banner here to upload<input type="file" id="eImgInput" accept="image/*" /></label>
+          <div style="display:flex;gap:.5rem;margin-top:.6rem"><input class="input" id="eImgUrl" placeholder="…or paste /images/event-banner.webp" style="flex:1" /><button type="button" class="btn btn-light btn-sm" id="eImgUrlAdd">Add</button></div>
+        </div>
+        <div class="field"><label>Extra gallery images <span class="muted">(optional)</span></label>
+          <div class="img-grid" id="eGalGrid"></div>
+          <label class="drop">Click or drop more event photos here<input type="file" id="eGalInput" accept="image/*" multiple /></label>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Button label</label><input class="input" name="cta" value="${esc(e.cta || "Shop Now")}" /></div>
+          <div class="field"><label>Button link</label><input class="input" name="link" value="${esc(e.link || "#/shop")}" placeholder="#/shop?filter=sale" /></div>
+          <div class="field"><label>Start date (optional)</label><input class="input" name="startsAt" type="date" value="${esc(e.startsAt || "")}" /></div>
+          <div class="field"><label>End date (optional)</label><input class="input" name="endsAt" type="date" value="${esc(e.endsAt || "")}" /></div>
+          <div class="field"><label>Sort order (lower shows first)</label><input class="input" name="sort" type="number" min="0" value="${e.sort || 0}" /></div>
+          <div class="field"><label>&nbsp;</label><label class="check-row"><input type="checkbox" name="active" ${e.active !== false ? "checked" : ""} /> Show on store homepage</label></div>
+        </div>
+        <p class="err" id="eErr"></p>
+        <button class="btn btn-dark btn-block" type="submit">${id ? "Save Changes" : "Create Event"}</button>
+      </form></div>
+    </div></div>`;
+    let banner = e.image || "";
+    let gallery = [...(e.gallery || [])];
+    const drawE = () => {
+      $("#eImgGrid").innerHTML = banner ? `<div class="img-cell" style="grid-column:span 2"><img src="${esc(banner)}" alt="" style="aspect-ratio:16/9" /><button data-rmb aria-label="Remove banner">✕</button></div>` : "<p class='muted small'>No banner — upload or paste one.</p>";
+      const rb = $("#eImgGrid [data-rmb]");
+      if (rb) rb.onclick = () => { banner = ""; drawE(); };
+      $("#eGalGrid").innerHTML = gallery.map((u, i) => `<div class="img-cell"><img src="${esc(u)}" alt="" loading="lazy" /><button data-rmg="${i}" aria-label="Remove photo">✕</button></div>`).join("") || "<p class='muted small'>No extra photos.</p>";
+      $$("#eGalGrid [data-rmg]").forEach((b) => (b.onclick = () => { gallery.splice(Number(b.dataset.rmg), 1); drawE(); }));
+    };
+    drawE();
+    const takeUpload = async (files, single, set) => {
+      if (!files.length) return;
+      try {
+        toast("Uploading…");
+        const up = await uploadFiles(files);
+        if (single) set(up[0].url);
+        else set(null, up.map((f) => f.url));
+        toast("Uploaded.");
+      } catch (err) { toast(err.message, "error"); }
+    };
+    $("#eImgInput").addEventListener("change", async (ev) => { await takeUpload(ev.target.files, true, (u) => { banner = u; drawE(); }); ev.target.value = ""; });
+    $("#eGalInput").addEventListener("change", async (ev) => { await takeUpload(ev.target.files, false, (u, arr) => { gallery.push(...arr); drawE(); }); ev.target.value = ""; });
+    $("#eImgUrlAdd").addEventListener("click", () => {
+      const u = $("#eImgUrl").value.trim();
+      if (!/^\/(uploads|images)\/[^/]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a valid store URL like /images/event-banner.webp", "error"); return; }
+      banner = u; $("#eImgUrl").value = ""; drawE();
+    });
+    $("#mClose").addEventListener("click", () => (root.innerHTML = ""));
+    root.querySelector(".modal-scrim").addEventListener("mousedown", (ev) => { if (ev.target.classList.contains("modal-scrim")) root.innerHTML = ""; });
+    $("#eForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(ev.target);
+      const body = {
+        title: fd.get("title"), subtitle: fd.get("subtitle"), description: fd.get("description"), badge: fd.get("badge"),
+        image: banner, gallery, cta: fd.get("cta"), link: fd.get("link"),
+        startsAt: fd.get("startsAt"), endsAt: fd.get("endsAt"), sort: Number(fd.get("sort")),
+        active: !!fd.get("active"),
+      };
+      try {
+        if (id) await api("/api/admin/events/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(body) });
+        else await api("/api/admin/events", { method: "POST", body: JSON.stringify(body) });
+        root.innerHTML = "";
+        toast(id ? "Event saved." : "Event created — live on the homepage.");
+        vEvents();
+      } catch (err) { $("#eErr").textContent = err.message; }
+    });
+  }
+  /* ---------- homepage visuals ---------- */
+  async function vHomepage() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    let s = {};
+    try { s = await api("/api/admin/settings"); }
+    catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+    const blankSlide = () => ({ eyebrow: "", title: "", message: "", badge: "", image: "", images: [] });
+    const withGallery = (b) => {
+      const s = { ...blankSlide(), ...(b || {}) };
+      if (!Array.isArray(s.images)) s.images = s.image ? [s.image] : [];
+      return s;
+    };
+    let slides;
+    if (Array.isArray(s.heroSlides) && s.heroSlides.length) {
+      try { slides = JSON.parse(JSON.stringify(s.heroSlides)).map(withGallery); }
+      catch { slides = [blankSlide()]; }
+    } else {
+      const h = s.hero || {};
+      slides = (h.title || h.image || h.eyebrow || h.message || h.badge) ? [withGallery(h)] : [blankSlide()];
+    }
+    const catImgs = { ...(s.categoryImages || {}) };
+    const colImgs = { ...(s.collectionImages || {}) };
+    const CATS = [["tshirts", "T-Shirts"], ["shirts", "Shirts"], ["jackets", "Jackets"], ["hoodies", "Hoodies"], ["jeans", "Jeans"], ["pants", "Pants"], ["shorts", "Shorts"], ["sweatshirts", "Sweatshirts"]];
+    const COLS = [["men", "Men"], ["women", "Women"], ["unisex", "Unisex"]];
+    const get = (kind, key) => (kind === "slide" ? (slides[Number(key)] || {}).image : kind === "cat" ? catImgs[key] : colImgs[key]) || "";
+    const set = (kind, key, url) => {
+      if (kind === "slide") { if (slides[Number(key)]) slides[Number(key)].image = url; }
+      else if (kind === "cat") { if (url) catImgs[key] = url; else delete catImgs[key]; }
+      else { if (url) colImgs[key] = url; else delete colImgs[key]; }
+    };
+    const rowHTML = (kind, key, label) => {
+      const url = get(kind, key);
+      return `<div class="img-row" data-kind="${kind}" data-key="${key}">
+        ${url ? `<img src="${esc(url)}" alt="" loading="lazy" />` : `<span class="thumb-ph">–</span>`}
+        <strong>${esc(label)}</strong>
+        <input class="input" data-url placeholder="/images/… or upload →" value="${esc(url)}" aria-label="Image URL for ${esc(label)}" />
+        <label class="btn btn-light btn-sm">Upload<input type="file" data-file accept="image/*" hidden /></label>
+        <button type="button" class="btn btn-light btn-sm" data-clear>Remove</button>
+      </div>`;
+    };
+    const slideHTML = (b, i) => `
+      <div class="slide-block" data-sidx="${i}">
+        <div class="slide-head"><strong>Banner ${i + 1}</strong>
+          <span class="row-actions">
+            <button type="button" class="btn btn-light btn-sm" data-smove="-1" ${i === 0 ? "disabled" : ""} aria-label="Move banner ${i + 1} up">↑</button>
+            <button type="button" class="btn btn-light btn-sm" data-smove="1" ${i === slides.length - 1 ? "disabled" : ""} aria-label="Move banner ${i + 1} down">↓</button>
+            <button type="button" class="btn btn-light btn-sm" data-sdel>Remove</button>
+          </span>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Headline</label><input class="input" data-sfield="title" value="${esc(b.title || "")}" placeholder="Considered essentials, made to be lived in." /></div>
+          <div class="field"><label>Eyebrow (small top line)</label><input class="input" data-sfield="eyebrow" value="${esc(b.eyebrow || "")}" placeholder="New Season · Autumn–Winter 2026" /></div>
+        </div>
+        <div class="field"><label>Message</label><textarea class="input" data-sfield="message" rows="2" placeholder="Short brand message…">${esc(b.message || "")}</textarea></div>
+        <div class="field"><label>Badge (bottom-left tag)</label><input class="input" data-sfield="badge" value="${esc(b.badge || "")}" placeholder="The Autumn Edit…" /></div>
+        <div class="field"><label>Banner photos <span class="muted">(first = cover · auto-fades when 2+)</span></label>
+          <div class="img-grid">${(b.images || []).map((u, k) => `<div class="img-cell"><img src="${esc(u)}" alt="" loading="lazy" />${k === 0 ? '<span class="tag">Cover</span>' : ""}<button type="button" data-sgaldel="${k}" aria-label="Remove photo">✕</button></div>`).join("") || "<p class='muted small'>No photos — the built-in artwork shows.</p>"}</div>
+          <label class="drop">Click or drop photos here (uploads instantly)<input type="file" data-sgalup accept="image/*" multiple /></label>
+          <div style="display:flex;gap:.5rem;margin-top:.6rem"><input class="input" data-sgalurl placeholder="/images/banner-1.webp" style="flex:1" /><button type="button" class="btn btn-light btn-sm" data-sgaladd>Add</button></div>
+        </div>
+      </div>`;
+    let dirty = false;
+    const markDirty = () => {
+      dirty = true;
+      const d = document.getElementById("hpDirty");
+      if (d) { d.textContent = "● Unsaved changes"; d.style.color = "var(--clay)"; }
+    };
+    const markSaved = () => {
+      dirty = false;
+      const d = document.getElementById("hpDirty");
+      if (d) { d.textContent = "✓ All saved"; d.style.color = "var(--success)"; }
+    };
+    const draw = () => {
+      $("#hpSlides").innerHTML = slides.map(slideHTML).join("");
+      $("#hpCatRows").innerHTML = CATS.map(([k, l]) => rowHTML("cat", k, l)).join("");
+      $("#hpColRows").innerHTML = COLS.map(([k, l]) => rowHTML("col", k, l)).join("");
+      if (dirty) markDirty(); else markSaved();
+    };
+    $("#view").innerHTML = `
+      <div id="hpWrap">
+      <div class="card"><h3>Hero banners <span class="muted small">— fade and rotate on the homepage. Empty fields keep the built-in text.</span> <span id="hpDirty" class="small" role="status"></span></h3>
+        <div id="hpSlides"></div>
+        <button type="button" class="btn btn-light btn-sm" id="hpAddSlide">+ Add banner</button>
+      </div>
+      <div class="card"><h3>Shop by Category photos</h3><div id="hpCatRows" class="img-rows"></div></div>
+      <div class="card"><h3>Shop by Collection photos</h3><div id="hpColRows" class="img-rows"></div></div>
+      <button class="btn btn-dark" id="hpSave">Save Homepage</button> <span class="muted small" id="hpMsg"></span>
+      </div>`;
+    draw();
+    $("#hpAddSlide").addEventListener("click", () => { slides.push(blankSlide()); markDirty(); draw(); });
+    $("#hpWrap").addEventListener("input", (ev) => {
+      const f = ev.target.closest("[data-sfield]");
+      if (!f) return;
+      const block = f.closest(".slide-block");
+      const sl = slides[Number(block.dataset.sidx)];
+      if (sl) { sl[f.dataset.sfield] = f.value; markDirty(); }
+    });
+    $("#hpWrap").addEventListener("change", async (ev) => {
+      const sgal = ev.target.closest("[data-sgalup]");
+      if (sgal && sgal.files.length) {
+        const sl = slides[Number(sgal.closest(".slide-block").dataset.sidx)];
+        try {
+          toast("Uploading…");
+          const up = await uploadFiles(sgal.files);
+          const room = Math.max(0, 6 - sl.images.length);
+          sl.images.push(...up.map((x) => x.url).slice(0, room));
+          markDirty();
+          draw();
+          await doSaveHomepage(true);
+          toast("Photo saved to the banner.");
+        } catch (err) { toast(err.message, "error"); }
+        sgal.value = "";
+        return;
+      }
+      const row = ev.target.closest(".img-row");
+      if (!row) return;
+      const { kind, key } = row.dataset;
+      if (ev.target.matches("[data-file]") && ev.target.files.length) {
+        try {
+          toast("Uploading…");
+          const up = await uploadFiles(ev.target.files);
+          set(kind, key, up[0].url);
+          markDirty();
+          draw();
+          toast("Uploaded — remember to Save Homepage.");
+        } catch (err) { toast(err.message, "error"); }
+        ev.target.value = "";
+      } else if (ev.target.matches("[data-url]")) {
+        const u = ev.target.value.trim();
+        if (u && !/^(https:\/\/|\/(uploads|images)\/)[^?#\s]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/hero.webp", "error"); draw(); return; }
+        set(kind, key, u);
+        markDirty();
+        draw();
+      }
+    });
+    $("#hpWrap").addEventListener("click", (ev) => {
+      const add = ev.target.closest("[data-sgaladd]");
+      if (add) {
+        const block = add.closest(".slide-block");
+        const sl = slides[Number(block.dataset.sidx)];
+        const u = block.querySelector("[data-sgalurl]").value.trim();
+        if (!/^(https:\/\/|\/(uploads|images)\/)[^?#\s]+\.(jpe?g|png|webp|gif|avif)$/i.test(u)) { toast("Use a store URL like /images/banner-1.webp", "error"); return; }
+        if (sl.images.length >= 6) { toast("Maximum 6 photos per banner.", "error"); return; }
+        if (sl.images.includes(u)) { toast("That photo is already in this banner.", "error"); return; }
+        sl.images.push(u);
+        markDirty();
+        draw();
+        return;
+      }
+      const del = ev.target.closest("[data-sgaldel]");
+      if (del) {
+        slides[Number(del.closest(".slide-block").dataset.sidx)].images.splice(Number(del.dataset.sgaldel), 1);
+        markDirty();
+        draw();
+        return;
+      }
+      const mv = ev.target.closest("[data-smove]");
+      if (mv) {
+        const block = mv.closest(".slide-block");
+        const i = Number(block.dataset.sidx);
+        const j = i + Number(mv.dataset.smove);
+        if (j < 0 || j >= slides.length) return;
+        [slides[i], slides[j]] = [slides[j], slides[i]];
+        markDirty();
+        draw();
+        return;
+      }
+      if (ev.target.closest("[data-sdel]")) {
+        if (slides.length <= 1) { toast("Keep at least one banner (leave it empty for built-in text).", "error"); return; }
+        slides.splice(Number(ev.target.closest(".slide-block").dataset.sidx), 1);
+        markDirty();
+        draw();
+        return;
+      }
+      const btn = ev.target.closest("[data-clear]");
+      if (!btn) return;
+      const row = btn.closest(".img-row");
+      set(row.dataset.kind, row.dataset.key, "");
+      markDirty();
+      draw();
+    });
+    const doSaveHomepage = async (quiet) => {
+      const IMG_OK = /^\/(uploads|images)\/[^/]+\.(jpe?g|png|webp|gif|avif)$/i;
+      const clean = slides
+        .map((b) => ({
+          eyebrow: (b.eyebrow || "").trim(), title: (b.title || "").trim(), message: (b.message || "").trim(), badge: (b.badge || "").trim(),
+          images: [...new Set((b.images || []).filter((u) => IMG_OK.test(u) || u.startsWith("https://")))].slice(0, 6),
+        }))
+        .map((b) => ({ ...b, image: b.images[0] || "" }))
+        .filter((b) => b.eyebrow || b.title || b.message || b.badge || b.images.length);
+      await api("/api/admin/settings", { method: "PUT", body: JSON.stringify({ ...s, heroSlides: clean, hero: clean[0] || blankSlide(), categoryImages: catImgs, collectionImages: colImgs }) });
+      // Rebuild from server truth so the editor always shows exactly what is saved.
+      const fresh = await api("/api/admin/settings");
+      s = fresh;
+      slides = (Array.isArray(fresh.heroSlides) && fresh.heroSlides.length ? fresh.heroSlides : [blankSlide()]).map(withGallery);
+      for (const k of Object.keys(catImgs)) delete catImgs[k];
+      Object.assign(catImgs, fresh.categoryImages || {});
+      for (const k of Object.keys(colImgs)) delete colImgs[k];
+      Object.assign(colImgs, fresh.collectionImages || {});
+      draw();
+      markSaved();
+      if (!quiet) { $("#hpMsg").textContent = "Saved — banners live on the homepage."; toast("Homepage saved."); }
+    };
+    $("#hpSave").addEventListener("click", async () => {
+      try { await doSaveHomepage(false); }
+      catch (err) { toast(err.message, "error"); }
+    });
+  }
+
+  /* ---------- customers (read-only; passwords never leave the server) ---------- */
+  async function vCustomers() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/customers");
+      $("#view").innerHTML = `
+        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="stat"><span>Total customers</span><strong>${list.length}</strong></div>
+          <div class="stat"><span>Marketing opt-ins</span><strong>${list.filter((c) => c.marketing).length}</strong></div>
+        </div>
+        <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+          <tr><th>Customer</th><th>Phone</th><th>Addresses</th><th>Joined</th></tr>
+          ${list.map((c) => `<tr><td><strong>${esc(c.name)}</strong><br /><span class="muted small">${esc(c.email)}${c.marketing ? " · ✉ offers" : ""}</span></td><td>${esc(c.phone || "—")}</td><td>${c.addresses}</td><td class="muted small">${new Date(c.createdAt).toLocaleDateString("en-IN")}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">No customer accounts yet.</td></tr>`}
+        </table></div>
+        <p class="muted small">Accounts live in the database, so customers stay logged in on every device. Passwords are stored hashed and are never shown here.</p>`;
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- reviews (moderation) ---------- */
+  async function vReviews() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/reviews");
+      const avg = list.length ? (Math.round((list.reduce((s, r) => s + r.rating, 0) / list.length) * 10) / 10) : "—";
+      $("#view").innerHTML = `
+        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="stat"><span>Total reviews</span><strong>${list.length}</strong></div>
+          <div class="stat"><span>Average rating</span><strong>${avg}</strong></div>
+        </div>
+        <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+          <tr><th>Product</th><th>Rating</th><th>Review</th><th>Author</th><th>Date</th><th></th></tr>
+          ${list.map((r) => `<tr>
+            <td><strong>${esc(r.productName || r.productId)}</strong><br /><span class="muted small">${esc(r.orderNo)}</span></td>
+            <td>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</td>
+            <td>${r.title ? `<strong>${esc(r.title)}</strong><br />` : ""}<span class="muted">${esc(r.text.slice(0, 160))}${r.text.length > 160 ? "…" : ""}</span></td>
+            <td>${esc(r.author)}</td>
+            <td class="muted small">${new Date(r.createdAt).toLocaleDateString("en-IN")}</td>
+            <td><button class="btn btn-light btn-sm" data-rdel="${esc(r.id)}">Delete</button></td>
+          </tr>`).join("") || `<tr><td colspan="6" class="muted">No reviews yet — they appear here after delivered orders are reviewed.</td></tr>`}
+        </table></div>
+        <p class="muted small">Only verified-purchase reviews can be submitted (one per order + product). Delete anything abusive or spam.</p>`;
+      $$("#view [data-rdel]").forEach((b) => (b.onclick = async () => {
+        if (!confirm("Delete this review permanently?")) return;
+        try { await api("/api/admin/reviews/" + encodeURIComponent(b.dataset.rdel), { method: "DELETE" }); toast("Review deleted."); vReviews(); }
+        catch (e) { toast(e.message, "error"); }
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- messages (customer support inbox) ---------- */
+  async function vMessages() {
+    $("#view").innerHTML = "<p class='muted'>Loading...</p>";
+    try {
+      const list = await api("/api/admin/messages");
+      
+      const render = () => {
+        $("#view").innerHTML = `
+          <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat"><span>Total tickets</span><strong>${list.length}</strong></div>
+            <div class="stat"><span>Pending</span><strong>${list.filter(m => (m.status || 'pending') !== 'closed').length}</strong></div>
+            <div class="stat"><span>Closed</span><strong>${list.filter(m => m.status === 'closed').length}</strong></div>
+          </div>
+          <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+            <tr><th>Ticket ID</th><th>Status</th><th>Date</th><th>Customer</th><th>Subject</th><th></th></tr>
+            ${list.map((m) => `<tr>
+              <td class="muted small">${esc(m.id.slice(0,8).toUpperCase())}</td>
+              <td><span class="badge ${(m.status||'pending')==='closed'?'sale':'new'}">${esc((m.status||'pending').toUpperCase())}</span></td>
+              <td class="muted small">${new Date(m.createdAt).toLocaleString("en-IN")}</td>
+              <td><strong>${esc(m.name)}</strong><br /><a class="muted small" href="mailto:${esc(m.email)}">${esc(m.email)}</a></td>
+              <td><span class="muted">${esc(m.message.slice(0, 80))}${m.message.length > 80 ? "..." : ""}</span></td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-light btn-sm" data-mview="${esc(m.id)}">View Ticket</button>
+              </td>
+            </tr>`).join("") || `<tr><td colspan="6" class="muted">No support tickets found.</td></tr>`}
+          </table></div>
+        `;
+        
+        $("#view [data-mview]").forEach(b => {
+          b.onclick = () => {
+            const m = list.find(x => x.id === b.dataset.mview);
+            if (!m) return;
+            const root = $("#modalRoot");
+            const renderModal = () => {
+              root.innerHTML = `
+                <div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px">
+                  <div class="modal-head">
+                    <strong>Ticket #${m.id.slice(0,8).toUpperCase()} - ${(m.status||'pending').toUpperCase()}</strong>
+                    <button class="btn btn-light btn-sm" id="mClose">Close ✕</button>
+                  </div>
+                  <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem; max-height:60vh; overflow-y:auto; background:var(--sand)">
+                    <div style="background:#fff; padding:1rem; border-radius:8px; border:1px solid var(--line)">
+                      <div style="display:flex; justify-content:space-between; margin-bottom:.5rem;">
+                        <strong>${esc(m.name)} (${esc(m.email)})</strong>
+                        <span class="muted small">${new Date(m.createdAt).toLocaleString()}</span>
+                      </div>
+                      <p style="margin:0; white-space:pre-wrap">${esc(m.message)}</p>
+                    </div>
+                    ${(m.replies || []).map(r => `
+                      <div style="background:${r.from==='Admin'?'#E9F5E9':'#fff'}; padding:1rem; border-radius:8px; border:1px solid var(--line); margin-left:${r.from==='Admin'?'2rem':'0'}; margin-right:${r.from==='Admin'?'0':'2rem'}">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:.5rem;">
+                          <strong>${esc(r.from)}</strong>
+                          <span class="muted small">${new Date(r.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p style="margin:0; white-space:pre-wrap">${esc(r.message)}</p>
+                      </div>
+                    `).join("")}
+                  </div>
+                  ${m.status !== 'closed' ? `
+                  <div style="padding:1rem; border-top:1px solid var(--line); background:#fff">
+                    <textarea id="replyText" class="input" rows="3" placeholder="Type your reply here..." style="width:100%; margin-bottom:.8rem"></textarea>
+                    <div style="display:flex; justify-content:space-between">
+                      <button class="btn btn-light" id="btnCloseTicket">Close Ticket</button>
+                      <button class="btn btn-dark" id="btnSendReply">Send Reply</button>
+                    </div>
+                  </div>
+                  ` : `<div style="padding:1rem; border-top:1px solid var(--line); background:#fff; text-align:center"><p class="muted" style="margin:0">This ticket is closed.</p></div>`}
+                </div></div>
+              `;
+              
+              root.querySelector("#mClose").onclick = () => root.innerHTML = "";
+              root.querySelector(".modal-scrim").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-scrim")) root.innerHTML = ""; });
+              
+              if (m.status !== 'closed') {
+                root.querySelector("#btnSendReply").onclick = async () => {
+                  const text = root.querySelector("#replyText").value.trim();
+                  if (!text) return toast("Message cannot be empty", "error");
+                  try {
+                    root.querySelector("#btnSendReply").disabled = true;
+                    const res = await api("/api/admin/messages/" + encodeURIComponent(m.id) + "/reply", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ message: text }) });
+                    m.replies = res.ticket.replies;
+                    toast("Reply sent.");
+                    renderModal(); // re-render modal with new replies
+                  } catch (e) { toast(e.message, "error"); root.querySelector("#btnSendReply").disabled = false; }
+                };
+                
+                root.querySelector("#btnCloseTicket").onclick = async () => {
+                  if (!confirm("Are you sure you want to close this ticket?")) return;
+                  try {
+                    root.querySelector("#btnCloseTicket").disabled = true;
+                    const res = await api("/api/admin/messages/" + encodeURIComponent(m.id) + "/close", { method: "POST" });
+                    m.status = res.ticket.status;
+                    toast("Ticket closed.");
+                    renderModal();
+                  } catch (e) { toast(e.message, "error"); root.querySelector("#btnCloseTicket").disabled = false; }
+                };
+              }
+            };
+            renderModal();
+            // Also listen for modal close to re-render the list view to update statuses
+            const observer = new MutationObserver((mutations) => {
+              if (root.innerHTML === "") {
+                render(); // refresh the main list view when modal closes
+                observer.disconnect();
+              }
+            });
+            observer.observe(root, { childList: true });
+          };
+        });
+      };
+      
+      render();
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- orders ---------- */  async function vOrders() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const orders = await api("/api/admin/orders");
+      const tabs = ["all", "pending", "delivered", "cancelled"];
+      $("#view").innerHTML = `
+        <div class="toolbar" style="gap:.5rem; justify-content:flex-start;">
+          <div id="osf" style="display:flex;gap:.5rem">
+            ${tabs.map((t) => `<button class="btn btn-sm ${t === 'all' ? 'btn-dark' : 'btn-outline'}" data-tab="${t}" style="text-transform:capitalize">${t}</button>`).join("")}
+          </div>
+          <span class="muted small" style="margin-left:auto" id="oCount">${orders.length} orders</span>
+        </div>
+        <div id="olist"></div>`;
+      const draw = (f) => {
+        const list = orders.filter((o) => {
+          if (f === "all") return true;
+          if (f === "pending") return !["delivered", "cancelled"].includes(o.status);
+          return o.status === f;
+        });
+        $("#oCount").textContent = `${list.length} orders`;
+            $("#olist").innerHTML = list.map((o) => {
+            let expressOpt = o.express?.option;
+            if (expressOpt === "tomorrow" && new Date(o.express?.at || o.createdAt).toLocaleDateString("en-IN") !== new Date().toLocaleDateString("en-IN")) {
+              expressOpt = "today";
+            }
+            return `
+            <div class="card"><div style="display:flex;gap:.8rem;justify-content:space-between;flex-wrap:wrap;align-items:center">
+              <div><strong>${esc(o.orderNo)}</strong>${o.express ? ' <span class="pill">Express</span>' : ""}<br /><span class="muted small">${new Date(o.createdAt).toLocaleString("en-IN")} · ${esc(o.address.name)} · ${esc(o.address.city)} ${esc(o.address.pin)}</span>
+              <div class="order-items">${o.items.map((i) => `${esc(i.name)} × ${i.qty} (${esc(i.size)})`).join(" · ")}</div></div>
+              <div style="text-align:right"><strong>${inr(o.amounts.total)}</strong> <span class="muted small">COD${o.coupon ? " · " + esc(o.coupon) : ""}</span><br />
+              <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+              <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
+            </div></div>`}).join("") || "<p class='muted'>No orders in this state.</p>";
+        $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
+          try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
+          catch (e) { toast(e.message, "error"); vOrders(); }
+        }));
+        $$("#olist [data-odel]").forEach((b) => (b.onclick = async () => {
+          if (!confirm(`Permanently delete order ${b.dataset.odel}? This cannot be undone.`)) return;
+          try { await api("/api/admin/orders/" + encodeURIComponent(b.dataset.odel), { method: "DELETE" }); toast("Order deleted."); vOrders(); }
+          catch (e) { toast(e.message, "error"); }
+        }));
+      };
+      draw("all");
+      $$("#osf button").forEach((b) => b.addEventListener("click", () => {
+        $$("#osf button").forEach(btn => {
+          btn.classList.remove("btn-dark");
+          btn.classList.add("btn-outline");
+        });
+        b.classList.remove("btn-outline");
+        b.classList.add("btn-dark");
+        draw(b.dataset.tab);
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- coupons ---------- */
+  async function vCoupons() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const list = await api("/api/admin/coupons");
+      $("#view").innerHTML = `
+        <div class="card"><h3>Create coupon</h3><form id="cForm" class="grid-2">
+          <div class="field"><label>Code *</label><input class="input" name="code" placeholder="DIWALI20" required /></div>
+          <div class="field"><label>Type</label><select class="input" name="type"><option value="pct">Percent %</option><option value="flat">Flat ₹</option></select></div>
+          <div class="field"><label>Value *</label><input class="input" name="value" type="number" min="1" required /></div>
+          <div class="field"><label>Min order (₹)</label><input class="input" name="minSubtotal" type="number" min="0" value="0" /></div>
+          <div class="field"><label>Expires</label><input class="input" name="expires" type="date" value="2027-12-31" /></div>
+          <div class="field"><label>Label</label><input class="input" name="label" placeholder="20% off festive sale" /></div>
+          <div><br /><button class="btn btn-dark btn-sm" type="submit">Create</button></div>
+        </form></div>
+        <div class="card" style="padding:0;overflow:auto"><table class="tbl">
+          <tr><th>Code</th><th>Offer</th><th>Min order</th><th>Expires</th><th>Active</th><th></th></tr>
+          ${list.map((c) => `<tr><td><strong>${esc(c.code)}</strong></td><td>${c.type === "pct" ? c.value + "% off" : inr(c.value) + " off"}</td><td>${inr(c.minSubtotal)}</td><td>${esc(c.expires)}</td>
+          <td><input type="checkbox" data-ct="${esc(c.code)}" ${c.active !== false ? "checked" : ""} aria-label="Active: ${esc(c.code)}" /></td>
+          <td><button class="btn btn-light btn-sm" data-cd="${esc(c.code)}">Delete</button></td></tr>`).join("")}
+        </table></div>`;
+      $("#cForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try { await api("/api/admin/coupons", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) }); toast("Coupon created."); vCoupons(); }
+        catch (err) { toast(err.message, "error"); }
+      });
+      $$("#view [data-ct]").forEach((t) => (t.onchange = async () => {
+        try { await api("/api/admin/coupons/" + t.dataset.ct, { method: "PUT", body: JSON.stringify({ active: t.checked }) }); toast("Coupon updated."); }
+        catch (e) { toast(e.message, "error"); t.checked = !t.checked; }
+      }));
+      $$("#view [data-cd]").forEach((b) => (b.onclick = async () => {
+        if (!confirm(`Delete coupon ${b.dataset.cd}?`)) return;
+        try { await api("/api/admin/coupons/" + b.dataset.cd, { method: "DELETE" }); toast("Coupon deleted."); vCoupons(); }
+        catch (e) { toast(e.message, "error"); }
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- media ---------- */
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); toast("URL copied: " + t); }
+    catch { prompt("Copy this URL:", t); }
+  }
+  async function vMedia() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const [files, siteFiles] = await Promise.all([api("/api/admin/uploads"), api("/api/admin/site-images")]);
+      const total = files.reduce((s, f) => s + f.size, 0);
+      $("#view").innerHTML = `
+        <div class="card"><h3>Project images folder <span class="muted small">— drop files into the <code>images/</code> folder, then copy a URL below and paste it into any product's images</span></h3>
+          <div class="img-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+            ${siteFiles.map((f) => `<div class="img-cell"><img src="${esc(f.url)}" alt="" loading="lazy" /><button data-copy="${esc(f.url)}" style="right:auto;left:4px" aria-label="Copy URL for ${esc(f.name)}">Copy URL</button></div>`).join("") || "<p class='muted'>The <code>images/</code> folder is empty — copy your JPG/PNG/WebP files there.</p>"}
+          </div></div>
+        <label class="drop" style="margin-bottom:1rem">Or upload straight from here — click or drop images (≤5MB each)<input type="file" id="mUp" accept="image/*" multiple /></label>
+        <p class="muted small">${files.length} dashboard uploads · ${(total / 1048576).toFixed(1)} MB</p>
+        <div class="img-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+          ${files.map((f) => `<div class="img-cell"><img src="${esc(f.url)}" alt="" loading="lazy" /><button data-mdel="${esc(f.name)}" aria-label="Delete ${esc(f.name)}">✕</button></div>`).join("") || "<p class='muted'>No uploads yet.</p>"}
+        </div>`;
+      $$("#view [data-copy]").forEach((b) => (b.onclick = () => copyText(b.dataset.copy)));
+        
+
+      $("#mUp").addEventListener("change", async (e) => {
+        try { const up = await uploadFiles(e.target.files); toast(`${up.length} image(s) uploaded.`); vMedia(); }
+        catch (err) { toast(err.message, "error"); }
+      });
+      $$("#view [data-mdel]").forEach((b) => (b.onclick = async () => {
+        if (!confirm(`Delete ${b.dataset.mdel}? Products using it will fall back to illustrations.`)) return;
+        try { await api("/api/admin/uploads/" + encodeURIComponent(b.dataset.mdel), { method: "DELETE" }); toast("Deleted."); vMedia(); }
+        catch (e) { toast(e.message, "error"); }
+      }));
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- settings ---------- */
+  async function vSettings() {
+    $("#view").innerHTML = "<p class='muted'>Loading…</p>";
+    try {
+      const s = await api("/api/admin/settings");
+      $("#view").innerHTML = `<div class="card"><h3>Store settings</h3><form id="sForm" class="grid-2">
+        <div class="field"><label>Free shipping threshold (₹)</label><input class="input" name="freeShipThreshold" type="number" value="${s.freeShipThreshold}" /></div>
+        <div class="field"><label>Flat shipping fee (₹)</label><input class="input" name="shipFlat" type="number" value="${s.shipFlat}" /></div>
+        <div class="field"><label>Max COD order (₹)</label><input class="input" name="codMaxOrder" type="number" value="${s.codMaxOrder}" /></div>
+        <div class="field"><label>Announcement bar</label><input class="input" name="announcement" value="${esc(s.announcement || "")}" /></div>
+        <div class="field"><label>Active Event Preset</label><select class="input" name="eventPreset"><option value="" ${!s.eventPreset ? 'selected' : ''}>None (Default)</option><option value="christmas" ${s.eventPreset === 'christmas' ? 'selected' : ''}>Christmas Theme</option></select></div>
+        <div><br /><button class="btn btn-dark btn-sm" type="submit">Save Settings</button></div>
+      </form></div>
+      <div class="card"><h3>Admin password</h3><p class="muted small">Stored scrypt-hashed in the database (never plaintext). Changing it logs out other sessions.</p>
+        <form id="pwForm" class="grid-2">
+          <div class="field"><label>Current password</label><input class="input" name="cur" type="password" autocomplete="current-password" required /></div>
+          <div class="field"><label>New password (min 8 characters)</label><input class="input" name="next" type="password" autocomplete="new-password" required /></div>
+          <div><br /><button class="btn btn-outline btn-sm" type="submit">Change Password</button></div>
+        </form></div>`;
+      $("#sForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const patch = Object.fromEntries(new FormData(e.target).entries());
+        try { await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(patch) }); Object.assign(s, patch); toast("Settings saved."); }
+        catch (err) { toast(err.message, "error"); }
+      });
+      const m = s.maintenance || {};
+      const mCard = document.createElement("div");
+      mCard.className = "card";
+      mCard.innerHTML = `<h3>Maintenance mode <span class="muted small">— when on, the whole store shows one maintenance page and no new orders can be placed. This dashboard keeps working.</span></h3>
+        <form id="mForm">
+          <label class="check-row" style="margin-bottom:.7rem"><input type="checkbox" name="enabled" ${m.enabled ? "checked" : ""} /> <strong>Maintenance mode is ON</strong></label>
+          <div class="field"><label>Heading (optional)</label><input class="input" name="title" value="${esc(m.title || "")}" placeholder="We'll be right back." /></div>
+          <div class="field"><label>Detail message (optional)</label><textarea class="input" name="message" rows="3" placeholder="What should shoppers be told?">${esc(m.message || "")}</textarea></div>
+          <button class="btn btn-dark btn-sm" type="submit">Save Maintenance Settings</button>
+        </form>`;
+      $("#view").appendChild(mCard);
+      mCard.querySelector("#mForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(e.target).entries());
+        try {
+          await api("/api/admin/settings", { method: "PUT", body: JSON.stringify({ ...s, maintenance: { enabled: !!v.enabled, title: String(v.title || ""), message: String(v.message || "") } }) });
+          toast(v.enabled ? "Maintenance mode is ON — the store now shows one page." : "Maintenance mode is OFF — the store is back.");
+          vSettings();
+        } catch (err) { toast(err.message, "error"); }
+      });
+      $("#pwForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(e.target).entries());
+        try {
+          await api("/api/admin/password", { method: "PATCH", body: JSON.stringify(v) });
+          e.target.reset();
+          toast("Password changed. Use it next time you log in.");
+        } catch (err) { toast(err.message, "error"); }
+      });
+    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  }
+
+  /* ---------- boot ---------- */
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#modalRoot").innerHTML = ""; });
+  if (getToken()) showDash(); else showLogin();
+})();

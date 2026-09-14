@@ -1,0 +1,63 @@
+:root{
+  --ink:#141414;
+  --ink-2:#2b2b2b;
+  --muted:#6f6a63;
+  --muted-2:#8a847c;
+  --paper:#FBFAF8;
+  --card:#FFFFFF;
+  --line:#E7E2DA;
+  --line-2:#D8D2C8;
+  --sand:#F3F0EA;
+  --sand-2:#ECE8E0;
+  --forest:#1A3C34; /* primary accent: badges, key CTAs, highlights */
+  --forest-deep:#122A24;
+  --clay:#B4532A; /* reserved: logo dot + micro-accents only, never large surfaces */
+  --clay-deep:#8F3F1F;
+  --sage:#DDE5DD;
+  --gold:#C9A227;
+  --success:#1E7B44;
+  --danger:#B3261E;
+  --warning:#8A5A00;
+  --focus:#1A3C34;
+  --radius:14px;
+  --radius-sm:10px;
+  --radius-xs:8px;
+  --shadow-sm:0 1px 2px rgba(20,20,20,.06),0 2px 8px rgba(20,20,20,.06);
+  --shadow-md:0 8px 28px rgba(20,20,20,.10);
+  --shadow-lg:0 24px 64px rgba(20,20,20,.16);
+  --font-body:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-display:"Fraunces",Georgia,"Times New Roman","Noto Serif",serif;
+  --max:1400px;
+  --header-h:68px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--font-body);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overflow-x:clip; /* hard guarantee: no horizontal scrolling (clip preserves sticky) */
+}
+::selection{background:var(--forest);color:#fff}
+/* Quiet branded scrollbar (forest-on-sand), thin everywhere */
+html{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px;border:2px solid var(--paper)}
+::-webkit-scrollbar-thumb:hover{background:var(--forest)}
+a{color:inherit}
+img,svg{display:block;max-width:100%}
+button{font:inherit}
+input,select,textarea{font:inherit}
+:focus-visible{outline:3px solid var(--forest);outline-offset:2px;border-radius:6px}
+.visually-hidden{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip-link{position:absolute;left:12px;top:-48px;z-index:200;background:var(--ink);color:#fff;padding:.65rem 1rem;border-radius:10px;text-decoration:none;transition:top .18s var(--ease)}
+.skip-link:focus{top:12px;color:#fff}
+.muted{color:var(--muted)}
+[hidden]{display:none!important}
+/* Film grain: one ultra-subtle fixed overlay so large flat surfaces (sand
+   sections, cards) read tactile instead of digital. Static, pointer-transparent. */
+body::after{content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");}
