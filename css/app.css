@@ -522,7 +522,7 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
   .plp-layout{grid-template-columns:1fr}
   .filters{position:fixed;inset:auto 0 0 0;top:auto;z-index:125;border-radius:18px 18px 0 0;max-height:82vh;overflow:auto;transform:translateY(102%);transition:transform .25s var(--ease)}
   .filters.open{transform:none}
-  .filter-fab{display:inline-flex;position:sticky;bottom:14px;z-index:5}
+  .filter-fab{display:inline-flex;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.2);border-radius:999px;padding:0.7rem 1.6rem}
   .split,.pdp,.acct{grid-template-columns:1fr}
   .acct-sidebar { position: relative; top: auto; margin-bottom: 1.5rem; z-index: 20; }
   .acct-mobile-toggle { 
@@ -573,6 +573,10 @@ body.maintenance .announce-bar,body.maintenance .site-header,body.maintenance .s
   .event-grid{grid-template-columns:1fr}
   .gender-grid{grid-template-columns:1fr}
   .p-body{padding:.7rem}
+  .p-price{gap:.2rem; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .p-price .price{font-size:.85rem !important;}
+  .p-price .price > span{font-size:.8rem !important; margin-right:.15rem !important;}
+  .p-price .mrp{font-size:.75rem !important;}
   .p-actions{flex-direction:column}
   .quick-view{display:none}
   .page{padding:1rem .9rem 3rem}
