@@ -668,6 +668,9 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
     const keep = products[i];
     products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, added: keep.added, popularity: keep.popularity ?? 50 };
     await store.saveProducts(products);
+    if (req.body.autoReviews) {
+      await seedFakeReviewsForProduct(keep.id, keep.name);
+    }
     res.json(products[i]);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
