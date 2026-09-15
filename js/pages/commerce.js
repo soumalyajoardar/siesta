@@ -5,7 +5,7 @@ import * as S from "../store.js";
 import { esc, inr, productArt, setTitle, toast, confirmDialog, flyToCart, openReviewModal, imgVariant, addrIcon, addrLabel } from "../ui.js";
 import { apiHealth, serverCreateOrder, serverFetchOrder, serverMyOrders, mirrorOrder, refreshMirror, serverCancelOrder,
   loadCatalog } from "../api.js";
-import { cardHTML, bindCards } from "./shop.js";
+import { cardHTML, bindCards, openSizePrompt } from "./shop.js";
 
 // Set right before a coupon apply/remove re-render so the changed rows flash.
 let flashCoupon = false;
@@ -589,8 +589,8 @@ export function WishlistPage() {
     });
     root.querySelectorAll("[data-move]").forEach((b) => (b.onclick = () => {
       const p = productById(b.dataset.move);
-      try { S.addToCart(p.id, p.sizes[Math.floor(p.sizes.length / 2)], p.colors[0].name, 1); S.toggleWish(p.id); flyToCart(b); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }
-      catch (e) { toast(e.message, "error"); }
+      if (!p) return;
+      openSizePrompt(p, b, () => { S.toggleWish(p.id); document.dispatchEvent(new CustomEvent("siesta:reroute")); });
     }));
     root.querySelectorAll("[data-unwish]").forEach((b) => (b.onclick = () => { S.toggleWish(b.dataset.unwish); document.dispatchEvent(new CustomEvent("siesta:reroute")); document.dispatchEvent(new CustomEvent("siesta:counts")); }));
   });

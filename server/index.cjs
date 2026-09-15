@@ -88,44 +88,6 @@ const storeImgBase = () => (sbs.getUrl() ? `${sbs.getUrl().replace(/\/$/, "")}/s
 const imgUrl = (u) => typeof u === "string" && (u.startsWith("/uploads/") || u.startsWith("/images/") || (storeImgBase() && u.startsWith(storeImgBase())));
 
 
-async function seedFakeReviewsForProduct(productId, productName) {
-  const reviews = await store.getReviews();
-  const count = Math.floor(Math.random() * 21) + 10;
-  const names = ["Aarav", "Vihaan", "Aditya", "Arjun", "Sai", "Reyansh", "Krishna", "Ishaan", "Shaurya", "Atharva", "Ananya", "Diya", "Saanvi", "Aadya", "Kiara", "Prisha", "Avni", "Kavya", "Isha", "Riya", "Karan", "Rahul", "Priya", "Sneha", "Rohit", "Vikram", "Neha", "Pooja", "Maya", "Kunal", "Tara"];
-  const titles = ["Great fit and quality", "Loved the fabric", "Exactly as shown", "Very comfortable", "Nice purchase", "Good, but size runs slightly small", "Excellent product", "Worth the price", "Premium feel", "Perfect for daily wear", "Highly recommended"];
-  const texts = [
-    "The fabric is really soft and it fits perfectly. Delivery was quick too.",
-    "I was skeptical about the quality but it turned out to be amazing. Will buy more.",
-    "Looks exactly like the pictures. The stitching is neat and it feels premium.",
-    "Very comfortable for all-day wear. The color didn't fade after washing.",
-    "Good purchase overall. The material is breathable and light.",
-    "The fit is great, but I'd recommend sizing up if you prefer a looser fit.",
-    "Absolutely love it! The design is minimal and it goes with everything.",
-    "Worth every penny. You can really feel the quality in the details.",
-    "A bit pricey but the quality justifies it. Feels very durable.",
-    "Perfect addition to my wardrobe. I've been wearing it non-stop since it arrived."
-  ];
-  const newReviews = [];
-  for (let i = 0; i < count; i++) {
-    const rand = Math.random();
-    const rating = rand < 0.5 ? 4 : (rand < 0.9 ? 5 : 3);
-    const date = new Date(Date.now() - Math.floor(Math.random() * 90 * 24 * 60 * 60 * 1000));
-    newReviews.push({
-      id: "rv-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      productId,
-      productName,
-      orderNo: "SIM_" + Math.floor(Math.random() * 1000000),
-      rating,
-      title: titles[Math.floor(Math.random() * titles.length)],
-      text: texts[Math.floor(Math.random() * texts.length)],
-      author: names[Math.floor(Math.random() * names.length)],
-      createdAt: date.toISOString(),
-      verified: true
-    });
-  }
-  await store.saveReviews([...newReviews, ...reviews]);
-}
-
 function sanitizeProduct(b, isNew) {
   const str = (v, max = 200) => String(v ?? "").slice(0, max).trim();
   const num = (v, fb = 0) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : fb);
@@ -236,8 +198,21 @@ function ratingMap(reviews) {
     m[r.productId].sum += r.rating;
   }
   const out = {};
-  for (const [k, v] of Object.entries(m)) out[k] = { count: v.count, avg: Math.round((v.sum / v.count) * 10) / 10 };
+  for (const [k, v] of Object.entries(m)) out[k] = { count: v.count, sum: v.sum, avg: Math.round((v.sum / v.count) * 10) / 10 };
   return out;
+}
+
+function getRatingForProduct(p, realRating) {
+  let count = realRating ? realRating.count : 0;
+  let sum = realRating ? realRating.sum : 0;
+  if (p.autoReviews) {
+    const h = (s) => String(s).split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
+    const fakeAvg = Number((4.5 + (Math.abs(h(p.id)) % 5) / 10).toFixed(1));
+    const fakeCount = 50 + (Math.abs(h(p.id)) % 150);
+    count += fakeCount;
+    sum += (fakeAvg * fakeCount);
+  }
+  return { count, avg: count === 0 ? 0 : Math.round((sum / count) * 10) / 10 };
 }
 
 app.get("/api/products", async (req, res) => {
@@ -251,7 +226,7 @@ app.get("/api/products", async (req, res) => {
       const n = String(q).toLowerCase();
       list = list.filter((p) => [p.name, p.category, p.gender, p.desc, p.material].join(" ").toLowerCase().includes(n));
     }
-    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p), rating: ratings[p.id] || { count: 0, avg: 0 } })));
+    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p), rating: getRatingForProduct(p, ratings[p.id]) })));
   } catch (e) { res.status(500).json({ error: "Could not load products." }); }
 });
 
@@ -259,7 +234,7 @@ app.get("/api/products/:id", async (req, res) => {
   try {
     const p = (await getProducts()).find((x) => x.id === req.params.id);
     if (!p) return res.status(404).json({ error: "Product not found." });
-    const r = ratingMap(await getReviews())[p.id] || { count: 0, avg: 0 };
+    const r = getRatingForProduct(p, ratingMap(await getReviews())[p.id]);
     res.json({ ...p, discountPct: discountPct(p), rating: r });
   } catch (e) { res.status(500).json({ error: "Could not load the product." }); }
 });
@@ -653,10 +628,8 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
     const products = await getProducts();
     const p = sanitizeProduct(req.body, true);
     if (products.some((x) => x.id === p.id)) return res.status(409).json({ error: "A product with this ID already exists." });
+    p.autoReviews = !!req.body.autoReviews;
     await store.saveProducts([p, ...products]);
-    if (req.body.autoReviews) {
-      await seedFakeReviewsForProduct(p.id, p.name);
-    }
     res.status(201).json(p);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -666,11 +639,8 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
     const i = products.findIndex((x) => x.id === req.params.id);
     if (i < 0) return res.status(404).json({ error: "Product not found." });
     const keep = products[i];
-    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, added: keep.added, popularity: keep.popularity ?? 50 };
+    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, added: keep.added, popularity: keep.popularity ?? 50, autoReviews: !!req.body.autoReviews };
     await store.saveProducts(products);
-    if (req.body.autoReviews) {
-      await seedFakeReviewsForProduct(keep.id, keep.name);
-    }
     res.json(products[i]);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

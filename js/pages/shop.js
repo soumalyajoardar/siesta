@@ -106,17 +106,54 @@ export function bindCards(root) {
     const p = productById(b.dataset.add);
     if (!p) return;
     if (!inStock(p)) { toast("This item is out of stock. We'll restock soon.", "error"); return; }
-    // default size = middle size to reduce friction; PDP enforces explicit choice
-    const size = p.sizes[Math.floor(p.sizes.length / 2)];
-    try {
-      addToCart(p.id, size, p.colors[0].name, 1);
-      if (window.openCartDrawer) window.openCartDrawer();
-      else flyToCart(b);
-      document.dispatchEvent(new CustomEvent("siesta:counts"));
-    } catch (err) { toast(err.message, "error"); }
+    openSizePrompt(p, b);
   }));
   root.querySelectorAll("[data-notify]").forEach((b) => (b.onclick = () => handleNotify(b.dataset.notify)));
   root.querySelectorAll("[data-quick]").forEach((b) => (b.onclick = () => quickView(b.dataset.quick)));
+}
+
+export function openSizePrompt(p, fromEl, onAdded) {
+  if (!p) return;
+  if (!inStock(p)) { toast("This item is out of stock. We'll restock soon.", "error"); return; }
+  const done = () => {
+    if (window.openCartDrawer) window.openCartDrawer();
+    else if (fromEl) flyToCart(fromEl);
+    document.dispatchEvent(new CustomEvent("siesta:counts"));
+    if (typeof onAdded === "function") onAdded();
+  };
+  // Single-size products need no choice — add straight to cart.
+  if (p.sizes.length === 1) {
+    try {
+      addToCart(p.id, p.sizes[0], p.colors[0].name, 1);
+      done();
+    } catch (err) { toast(err.message, "error"); }
+    return;
+  }
+  let size = "";
+  const { el, close } = openModal(`Choose a size — ${p.name}`, `
+    <p class="muted" style="margin-top:0">Select a size to add <strong style="color:var(--ink)">${esc(p.name)}</strong> to your cart.</p>
+    <div class="size-row" role="group" aria-label="Choose a size for ${esc(p.name)}">
+      ${p.sizes.map((s) => `<button class="size-btn" data-pick="${esc(s)}" aria-pressed="false">${esc(s)}</button>`).join("")}
+    </div>
+    <p class="err" id="sizePickErr" role="alert" style="color:var(--danger);font-size:.85rem;min-height:1.2em"></p>
+    <button class="btn btn-dark btn-block" id="sizePickAdd">Add to Cart</button>`);
+  el.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => {
+    size = b.dataset.pick;
+    el.querySelectorAll("[data-pick]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    el.querySelector("#sizePickErr").textContent = "";
+  }));
+  el.querySelector("#sizePickAdd").onclick = () => {
+    if (!size) {
+      el.querySelector("#sizePickErr").textContent = "Please choose a size.";
+      el.querySelector("[data-pick]")?.focus();
+      return;
+    }
+    try {
+      addToCart(p.id, size, p.colors[0].name, 1);
+      close();
+      done();
+    } catch (err) { el.querySelector("#sizePickErr").textContent = err.message; }
+  };
 }
 
 export async function handleNotify(id) {
@@ -155,13 +192,8 @@ export function quickView(id) {
     </div></div></div>`);
   el.querySelector("[data-nav-view]")?.addEventListener("click", () => document.getElementById("modalRoot").innerHTML = "");
   el.querySelector("[data-qadd]")?.addEventListener("click", (e) => {
-    try {
-      addToCart(p.id, p.sizes[Math.floor(p.sizes.length / 2)], p.colors[0].name, 1);
-      if (window.openCartDrawer) window.openCartDrawer();
-      else flyToCart(e.currentTarget);
-      document.getElementById("modalRoot").innerHTML = "";
-      document.dispatchEvent(new CustomEvent("siesta:counts"));
-    } catch (err) { toast(err.message, "error"); }
+    document.getElementById("modalRoot").innerHTML = "";
+    openSizePrompt(p, e.currentTarget);
   });
 }
 
@@ -722,19 +754,30 @@ export function ProductPage(id) {
         }
       } catch { /* logged out or offline: no button */ }
       if (!box.isConnected) return;
-      if (!Array.isArray(list) || !list.length) {
+      list = Array.isArray(list) ? list : [];
+      let count = list.length;
+      let sum = list.reduce((s, x) => s + x.rating, 0);
+      
+      if (p.autoReviews) {
+        const h = (s) => String(s).split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
+        const fakeAvg = Number((4.5 + (Math.abs(h(p.id)) % 5) / 10).toFixed(1));
+        const fakeCount = 50 + (Math.abs(h(p.id)) % 150);
+        count += fakeCount;
+        sum += (fakeAvg * fakeCount);
+      }
+      
+      if (count === 0) {
         box.innerHTML = eligBtn + "<p>No reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
         setProductJsonLd(p, null);
       } else {
         const head = root.querySelector("#pdpRevHead");
-        if (head) {
-          head.innerHTML = `<span>Reviews <strong style="font-size:0.85em;">(${list.length})</strong></span> <span aria-hidden="true">+</span>`;
-        }
-        const avg = Math.round((list.reduce((s, x) => s + x.rating, 0) / list.length) * 10) / 10;
-        setProductJsonLd(p, { avg, count: list.length });
+        if (head) head.innerHTML = `<span>Reviews <strong style="font-size:0.85em;">(${count})</strong></span> <span aria-hidden="true">+</span>`;
+        
+        const avg = Math.round((sum / count) * 10) / 10;
+        setProductJsonLd(p, { avg, count });
         const line = root.querySelector("#pdpRatingLine");
         if (line) {
-          line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="Rated ${avg} out of 5 from ${list.length} reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${list.length} reviews`)} <strong>${avg}</strong> <span class="muted">· ${list.length} review${list.length === 1 ? "" : "s"}</span></button>`;
+          line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="Rated ${avg} out of 5 from ${count} reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${count} reviews`)} <strong>${avg}</strong> <span class="muted">· ${count} review${count === 1 ? "" : "s"}</span></button>`;
           line.querySelector("#pdpRatingJump").onclick = () => {
             const head = root.querySelector("#pdpRevHead");
             if (head) {
@@ -743,8 +786,13 @@ export function ProductPage(id) {
             }
           };
         }
-        box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${list.length} reviews`)} <strong>${avg}</strong> · ${list.length} review${list.length === 1 ? "" : "s"}</p>` +
-          list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)} <strong>${esc(r.title || "Verified review")}</strong> <span class="verified-icon" aria-label="Verified" style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></span><time style="margin-left:auto">${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.name || r.author)}</p></div>`).join("");
+        
+        let textsHTML = list.length ? list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)} <strong>${esc(r.title || "Verified review")}</strong> <span class="verified-icon" aria-label="Verified" style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></span><time style="margin-left:auto">${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.name || r.author)}</p></div>`).join("") : "";
+        if (p.autoReviews && list.length === 0) {
+            textsHTML = `<p class="muted">No written reviews yet — showing estimated rating summary only.</p>`;
+        }
+        
+        box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${count} reviews`)} <strong>${avg}</strong> · ${count} review${count === 1 ? "" : "s"}</p>` + textsHTML;
       }
       const btn = box.querySelector("#pdpReviewBtn");
       if (btn) btn.onclick = () => openReviewModal(eligOrder, { id: p.id, name: p.name });
