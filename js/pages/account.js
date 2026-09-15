@@ -171,11 +171,11 @@ function wireAccount(tab, u) {
       const thumbs = items.slice(0, 3).map((i) => {
         const p = S.productById(i.id);
         const src = p && p.images && p.images[0];
-        if (src) return `<img src="${esc(imgVariant(src, 200, 60))}" alt="${esc(i.name)}" style="width:44px;height:52px;object-fit:cover;border-radius:6px;border:1px solid var(--line)" loading="lazy" onerror="this.style.display='none'" />`;
-        return `<span style="width:44px;height:52px;border-radius:6px;background:var(--sand);display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:var(--ink-2);font-size:.9rem;border:1px solid var(--line)">S</span>`;
+        if (src) return `<img src="${esc(imgVariant(src, 200, 60))}" alt="${esc(i.name)}" style="width:60px;height:72px;object-fit:contain;background:#fff;border-radius:6px;border:1px solid var(--line)" loading="lazy" onerror="this.style.display='none'" />`;
+        return `<span style="width:60px;height:72px;border-radius:6px;background:var(--sand);display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:var(--ink-2);font-size:.9rem;border:1px solid var(--line)">S</span>`;
       });
       const extra = items.length - 3;
-      if (extra > 0) thumbs.push(`<span style="width:44px;height:52px;border-radius:6px;background:var(--sand);display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;color:var(--ink-2);border:1px solid var(--line)">+${extra}</span>`);
+      if (extra > 0) thumbs.push(`<span style="width:60px;height:72px;border-radius:6px;background:var(--sand);display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;color:var(--ink-2);border:1px solid var(--line)">+${extra}</span>`);
       return `<div style="display:flex;gap:4px;flex-shrink:0;margin-left:auto">${thumbs.join("")}</div>`;
     };
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => { const di = S.deliveryInfo(o); return `<div class="order-card"><div class="order-top" style="display:flex;gap:1rem;align-items:flex-start"><div style="flex:1;min-width:0"><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span>${di && di.detail ? `<br/><span class="eta-line">${esc(di.headline)}${di.date && o.status !== "delivered" && o.status !== "cancelled" ? " · " + esc(new Date(di.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })) : ""}</span>` : ""}</div><div style="display:flex;align-items:center;gap:.8rem;flex-shrink:0">${orderThumbs(o.items)}</div></div>

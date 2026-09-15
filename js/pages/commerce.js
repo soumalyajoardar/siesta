@@ -130,8 +130,10 @@ export function CheckoutPage() {
       <aside class="card" aria-label="Order summary" style="position:sticky;top:calc(var(--header-h) + 12px)">
         <h2 style="margin:0 0 .4rem">Summary</h2>
         ${t.lines.map((l) => `<div class="summary-row"><span>${esc(l.product.name)} × ${l.qty} <span class="muted">(${esc(l.size)})</span></span><span>${inr(l.product.price * l.qty)}</span></div>`).join("")}
+        ${t.coupon ? `<div class="applied-coupon"><span>🎟️ ${esc(t.coupon.code)} — ${esc(t.coupon.code === "FLAT200" ? "₹1200 off" : t.coupon.value + "% off")}</span><button class="link-btn" id="rmCouponCheckout">Remove</button></div>`
+        : `<form id="couponFormCheckout" class="coupon-row" style="margin: 1rem 0;"><label class="visually-hidden" for="couponInputCheckout">Coupon code</label><input id="couponInputCheckout" class="input" placeholder="Coupon code" autocomplete="off"/><button class="btn btn-outline btn-sm" type="submit">Apply</button></form>`}
         ${breakdownHTML(t)}
-        <p class="muted" style="font-size:.82rem">Pay ${inr(t.total)} in cash/UPI on delivery.</p>
+        <p class="muted" style="font-size:.82rem;margin-top:1rem;">Pay ${inr(t.total)} in cash/UPI on delivery.</p>
       </aside>
     </div>
   </div>`;
@@ -140,6 +142,21 @@ export function CheckoutPage() {
 function wireCheckout(t) {
   const main = document.getElementById("coMain");
   if (!main) return;
+  
+  const cForm = document.getElementById("couponFormCheckout");
+  if (cForm) cForm.onsubmit = (e) => {
+    e.preventDefault();
+    const code = document.getElementById("couponInputCheckout").value;
+    try {
+      const c = S.applyCoupon(code);
+      const after = S.totals();
+      toast(`Coupon ${c.code} applied — you save ${inr(after.discount)}. New total ${inr(after.total)}.`);
+      refresh();
+    } catch (err) { toast(err.message, "error"); }
+  };
+  const rmC = document.getElementById("rmCouponCheckout");
+  if (rmC) rmC.onclick = () => { S.removeCoupon(); toast("Coupon removed — total updated."); refresh(); };
+
   renderStep(main, t);
 
   function renderStep(main, t) {

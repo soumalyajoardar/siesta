@@ -409,7 +409,7 @@ export function HomePage() {
     <div class="home-sections">
       <section class="section" aria-labelledby="catH">
         <div class="section-head"><div><span class="eyebrow">Departments</span><h2 id="catH">Shop by category</h2></div><a class="link-btn" href="/shop">View everything →</a></div>
-        <div class="cat-grid">${CATEGORIES.map((c) => `<a class="cat-card reveal" href="/shop?category=${c.id}">${catArt(c.id, siteCatImage(c.id))}<span class="cat-label"><span><strong>${esc(c.label)}</strong><br/><span>${esc(c.blurb)}</span></span><span aria-hidden="true">→</span></span></a>`).join("")}</div>
+        <div class="cat-grid">${CATEGORIES.map((c) => `<a class="cat-card reveal" href="/shop?category=${c.id}">${catArt(c.id, siteCatImage(c.id))}<span class="cat-label"><span><strong>${esc(c.label)}</strong></span><span aria-hidden="true">→</span></span></a>`).join("")}</div>
       </section>
 
       <section class="section" aria-labelledby="genH">
@@ -419,7 +419,7 @@ export function HomePage() {
             const n = ALL.filter((p) => p && p.gender === g).length;
             const photo = siteCollectionImage(g);
             const art = `<span class="gender-art g-${g}" aria-hidden="true">${label[0]}${photo ? `<img src="${esc(imgVariant(photo, 800))}" alt="" loading="lazy" onload="this.classList.add('on')" onerror="this.remove()" />` : ""}</span>`;
-            return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${blurb} · ${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
+            return `<a class="cat-card gender-card reveal" style="transition-delay:${i * 70}ms" href="/shop?gender=${g}">${art}<span class="cat-label"><span><strong>${label}</strong><br/><span>${n} styles</span></span><span aria-hidden="true">→</span></span></a>`;
           }).join("")}
         </div>
       </section>
