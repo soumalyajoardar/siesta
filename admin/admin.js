@@ -809,10 +809,26 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
               <select class="status" data-os="${esc(o.orderNo)}">${["confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"].map((s) => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
               <button class="btn btn-light btn-sm" data-odel="${esc(o.orderNo)}" style="margin-top:.4rem">Delete</button></div>
             </div></div>`}).join("") || "<p class='muted'>No orders in this state.</p>";
-        $$("#olist [data-os]").forEach((sel) => (sel.onchange = async () => {
-          try { await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value }) }); toast("Order updated — the customer sees it on Track Order."); vOrders(); }
-          catch (e) { toast(e.message, "error"); vOrders(); }
-        }));
+        $$("#olist [data-os]").forEach((sel) => {
+          let originalValue = sel.value;
+          sel.onchange = async () => {
+            let cancelReason = undefined;
+            if (sel.value === "cancelled") {
+              const reason = prompt("Reason for cancellation (will be shown to customer):");
+              if (reason === null) {
+                sel.value = originalValue;
+                return;
+              }
+              cancelReason = reason || "Cancelled by admin";
+            }
+            try { 
+              await api("/api/admin/orders/" + encodeURIComponent(sel.dataset.os), { method: "PATCH", body: JSON.stringify({ status: sel.value, cancelReason }) }); 
+              toast("Order updated — the customer sees it on Track Order."); 
+              vOrders(); 
+            }
+            catch (e) { toast(e.message, "error"); vOrders(); }
+          };
+        });
         $$("#olist [data-odel]").forEach((b) => (b.onclick = async () => {
           if (!confirm(`Permanently delete order ${b.dataset.odel}? This cannot be undone.`)) return;
           try { await api("/api/admin/orders/" + encodeURIComponent(b.dataset.odel), { method: "DELETE" }); toast("Order deleted."); vOrders(); }

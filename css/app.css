@@ -330,9 +330,9 @@ li.active .tick{border-color:var(--forest)}
 /* Pulsing current step */
 .timeline li.current .dot{animation:dotPulse 1.8s ease-in-out infinite}
 @keyframes dotPulse{0%,100%{box-shadow:0 0 0 4px rgba(26,60,52,.15)}50%{box-shadow:0 0 0 8px rgba(26,60,52,.06)}}
-.timeline li.cancelled .dot{background:#fff;border-color:var(--ink)}
 .timeline li.done .dot::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.62rem;font-weight:800}
-.timeline li.cancelled .dot::after{content:"✕";color:var(--ink)}
+.timeline li.cancelled .dot{background:var(--forest);border-color:var(--forest)}
+.timeline li.cancelled .dot::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.62rem;font-weight:800}
 .tl-progress{height:8px;border-radius:99px;background:var(--sand-2);overflow:hidden;margin:.4rem 0 1.2rem}
 .tl-progress span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--forest),#4C7A6C);animation:barGrow 1s var(--ease) both}
 @keyframes barGrow{from{width:0!important}}

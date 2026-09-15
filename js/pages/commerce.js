@@ -459,11 +459,12 @@ function trackHTML(o) {
     return `${crumbs}<div class="split"><div class="card track-card">
       <h1 class="h-display" style="font-size:1.8rem">Order cancelled.</h1>
       <p class="muted">Order ${esc(o.orderNo)} · ${inr(o.amounts.total)} was never charged (Cash on Delivery).</p>
-      <ol class="timeline mini">
-        <li class="done"><span class="dot" aria-hidden="true"></span><strong>Order Confirmed</strong>${conf ? `<time>${new Date(conf.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("confirmed", conf.note))}</div>` : ""}</li>
-        <li class="done current cancelled"><span class="dot" aria-hidden="true"></span><strong>Cancelled</strong>${canc ? `<time>${new Date(canc.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("cancelled", canc.note))}</div>` : ""}</li>
+      <div class="tl-progress" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Delivery progress"><span style="width:100%;background:var(--forest)"></span></div>
+      <ol class="timeline" style="--fill:100%">
+        <li class="done line-active"><span class="dot" aria-hidden="true"></span><strong>Order Confirmed</strong>${conf ? `<time>${new Date(conf.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(noteFor("confirmed", conf.note))}</div>` : ""}</li>
+        <li class="done current cancelled"><span class="dot" aria-hidden="true"></span><strong style="color:var(--forest)">Cancelled</strong>${canc ? `<time>${new Date(canc.at).toLocaleString("en-IN")}</time><div class="t-sub">${esc(canc.note || "Order was cancelled.")}</div>` : ""}</li>
       </ol>
-      <a class="btn btn-dark btn-sm" href="/shop">Shop Again</a></div>${aside}</div>`;
+      <a class="btn btn-dark btn-sm" href="/shop" style="margin-top:1rem">Shop Again</a></div>${aside}</div>`;
   }
 
   const pct = Math.round(((o.stageIndex ?? 0) / (stages.length - 1)) * 100);

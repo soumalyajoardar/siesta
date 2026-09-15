@@ -866,11 +866,12 @@ app.patch("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {
     const orders = await getOrders();
     const o = orders.find((x) => x.orderNo === req.params.orderNo);
     if (!o) return res.status(404).json({ error: "Order not found." });
-    const { status } = req.body || {};
+    const { status, cancelReason } = req.body || {};
     if (status === undefined) return res.status(400).json({ error: "Nothing to update." });
     if (![...STAGES, "cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status." });
     o.status = status;
-    o.timeline.push({ stage: status, at: new Date().toISOString(), note: STAGE_NOTES[status] || "Status updated." });
+    o.timeline.push({ stage: status, at: new Date().toISOString(), note: (status === "cancelled" && cancelReason) ? cancelReason : (STAGE_NOTES[status] || "Status updated.") });
+    if (status === "cancelled" && cancelReason) { o.cancellationFeedback = { reason: cancelReason }; }
     await store.saveOrders(orders);
     res.json(o);
   } catch (e) { res.status(500).json({ error: "Could not update the order." }); }
