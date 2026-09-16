@@ -42,6 +42,12 @@ const swrite = (k, v) => { try { (sessMode() ? sessionStorage : localStorage).se
 // Which account the persistent (localStorage) device lists belong to —
 // prevents one user's leftovers merging into the next login on this device.
 const OWNER_KEY = "siesta.listOwner.v1";
+// Drop persistent PII mirrors on EVERY session end (explicit logout and
+// server-side rejection alike) so anonymous /track cannot read a prior
+// account's orders/addresses. Cart/wishlist stay (OWNER_KEY guards merges).
+function clearPersistentPII() {
+  try { localStorage.removeItem(K.orders); localStorage.removeItem(K.addrs); } catch {}
+}
 export function clearDeviceLists() {
   try {
     [...LIST_KEYS, SESS_FLAG].forEach((k) => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
@@ -115,7 +121,7 @@ export async function currentUser() {
         meCache = { at: Date.now(), user: data.user };
         return data.user;
       } catch (e) {
-        if (e.status === 401) { clearToken(); dropCache(); endSessionScope(); emit(); return null; }
+        if (e.status === 401) { clearToken(); dropCache(); endSessionScope(); clearPersistentPII(); emit(); return null; }
         return meCache.user || currentUserLocal();
       }
     }
@@ -191,6 +197,7 @@ export function logout() {
   clearToken(); dropCache();
   sessionStorage.removeItem(K.session); localStorage.removeItem(K.remember);
   endSessionScope();
+  clearPersistentPII();
   emit();
 }
 export async function updateProfile(email, patch) {

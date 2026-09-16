@@ -47,7 +47,7 @@ export function cardHTML(p, i = 0) {
     
     return `<article class="p-card reveal" style="transition-delay:${Math.min(i * 40, 320)}ms; display:flex; flex-direction:column; height:100%">
       <div class="p-media">
-        <a href="/product/${p.id}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p, 0, { loading: i < 4 ? "eager" : "lazy" })}</a>
+        <a href="/product/${esc(p.id)}" aria-label="View ${esc(p.name)}" tabindex="-1">${productArt(p, 0, { loading: i < 4 ? "eager" : "lazy" })}</a>
         ${hasAltVisual(p) ? `<span class="p-alt" aria-hidden="true">${productArt(p, 1)}</span>` : ""}
         <div class="p-badges">
           ${p.isNew ? `<span class="badge new">New</span>` : ""}
@@ -58,7 +58,7 @@ export function cardHTML(p, i = 0) {
       <div class="p-body" style="display:flex; flex-direction:column; flex:1">
         <span class="p-cat">${esc(catLabel(p.category))} &middot; ${esc(p.gender)}</span>
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <a class="p-name" href="/product/${p.id}">${esc(p.name)}</a>
+          <a class="p-name" href="/product/${esc(p.id)}">${esc(p.name)}</a>
           <button class="wish-btn wish-inline" data-wish="${p.id}" aria-pressed="${wished}" aria-label="${wished ? "Remove" : "Add"} ${esc(p.name)} ${wished ? "from" : "to"} wishlist" style="position:static; width:26px; height:26px; border:none; background:transparent; padding:0; flex-shrink:0; color:var(--ink);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="${wished ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><path d="M12 20.5C7 16.5 3.5 13.3 3.5 9.5 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.5 0 3.8-3.5 7-8.5 11Z"/></svg>
           </button>
@@ -187,7 +187,7 @@ export function quickView(id) {
     <p style="margin:.4rem 0"><strong>${inr(p.price)}</strong> ${p.mrp > p.price ? `<s class="muted">${inr(p.mrp)}</s> <span class="off">${off}% off</span>` : ""}</p>
     <p class="muted" style="font-size:.88rem">${esc(p.desc)}</p>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem">
-      <a class="btn btn-dark btn-sm" href="/product/${p.id}" data-nav-view>View Details</a>
+      <a class="btn btn-dark btn-sm" href="/product/${esc(p.id)}" data-nav-view>View Details</a>
       <button class="btn btn-outline btn-sm" data-qadd ${!inStock(p) ? "disabled" : ""}>Add to Cart</button>
     </div></div></div>`);
   el.querySelector("[data-nav-view]")?.addEventListener("click", () => document.getElementById("modalRoot").innerHTML = "");
@@ -820,7 +820,7 @@ export function ProductPage(id) {
         <p style="font-size:.9rem;color:var(--success);font-weight:700" role="status">${!inStock(p) ? `<span style="color:var(--danger)">Out of stock — restocking soon.</span>` : lowStock(p) ? `Only ${p.stock} left in stock — order soon.` : "In stock, ships within 24 hours."}</p>
         <p>${esc(p.desc)}</p>
         <div class="opt-label"><span>Size ${sizeRequiredNote(p)}</span><button class="link-btn" id="sizeGuideBtn">Size guide</button></div>
-        <div class="size-row" role="group" aria-label="Choose a size">${p.sizes.map((s) => `<button class="size-btn" data-size="${s}" aria-pressed="false">${s}</button>`).join("")}</div>
+        <div class="size-row" role="group" aria-label="Choose a size">${p.sizes.map((s) => `<button class="size-btn" data-size="${esc(s)}" aria-pressed="false">${esc(s)}</button>`).join("")}</div>
         <p class="err" id="sizeErr" role="alert" style="color:var(--danger);font-size:.85rem;min-height:1.2em"></p>
         ${p.colors.length > 1 ? `
         <div class="opt-label"><span>Colour: <output id="colorOut">${esc(p.colors[0].name)}</output></span></div>

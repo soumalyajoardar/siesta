@@ -135,8 +135,10 @@ async function custKey() {
   if (rec && rec.hash) return crypto.scryptSync(String(rec.hash), CUST_JWT_SALT, 32);
   return crypto.randomBytes(32); // last resort: sessions die on restart (local dev only)
 }
-async function custSign(customerId) {
-  const payload = Buffer.from(JSON.stringify({ sub: customerId, exp: Date.now() + CUST_TOKEN_TTL })).toString("base64url");
+async function custSign(customer) {
+  const id = typeof customer === "string" ? customer : customer.id;
+  const v = (typeof customer === "object" && customer ? customer.tokenVersion : 0) ?? 0;
+  const payload = Buffer.from(JSON.stringify({ sub: id, v, exp: Date.now() + CUST_TOKEN_TTL })).toString("base64url");
   const sig = crypto.createHmac("sha256", await custKey()).update(`cust.${payload}`).digest("hex");
   return `cust.${payload}.${sig}`;
 }
@@ -147,10 +149,15 @@ async function custValid(token) {
     if (tag !== "cust" || !payload || !sig) return null;
     const expect = crypto.createHmac("sha256", await custKey()).update(`cust.${payload}`).digest("hex");
     if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expect, "hex"))) return null;
-    const { sub, exp } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const { sub, exp, v } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (!(Number(exp) > Date.now())) return null;
     const list = await store.getCustomers();
-    return list.find((u) => u.id === sub) || null;
+    const user = list.find((u) => u.id === sub);
+    if (!user) return null;
+    // Sessions are bound to the credential generation: password rotation bumps
+    // tokenVersion, instantly revoking all previously issued tokens.
+    if ((v ?? 0) !== (user.tokenVersion ?? 0)) return null;
+    return user;
   } catch {
     return null;
   }

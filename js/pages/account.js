@@ -32,7 +32,7 @@ export function LoginPage(query) {
       try {
         await S.login(f.email.value, f.password.value, f.remember.checked);
         toast("Welcome back. You're logged in.");
-        window.navigate(next.startsWith("/") ? next : "/" + next);
+        window.navigate(next.startsWith("/") && !next.startsWith("//") ? next : "/account");
       } catch (err) { toast(err.message, "error"); }
       finally { btn.classList.remove("is-loading"); btn.disabled = false; }
     };
@@ -65,7 +65,7 @@ export function RegisterPage(query) {
       if (!f.terms.checked) { toast("Please accept the Terms to create an account.", "error"); return; }
       const btn = f.querySelector('[type="submit"]');
       btn.classList.add("is-loading"); btn.disabled = true;
-      try { await S.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, marketing: !!f.marketing.checked }); toast("Account created. Welcome to Siesta."); window.navigate(next.startsWith("/") ? next : "/" + next); }
+      try { await S.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, marketing: !!f.marketing.checked }); toast("Account created. Welcome to Siesta."); window.navigate(next.startsWith("/") && !next.startsWith("//") ? next : "/account"); }
       catch (err) { toast(err.message, "error"); }
       finally { btn.classList.remove("is-loading"); btn.disabled = false; }
     };
@@ -169,7 +169,7 @@ function wireAccount(tab, u) {
   } else if (tab === "orders") {
     main.innerHTML = `<div class="card"><h3 style="margin-top:0">Order history</h3>${orders.length ? orders.map((o) => { const di = S.deliveryInfo(o); return `<div class="order-card"><div class="order-top" style="display:flex;gap:1rem;align-items:flex-start"><div style="flex:1;min-width:0"><strong>${esc(o.orderNo)}</strong><br/><span class="muted" style="font-size:.84rem">${new Date(o.createdAt).toLocaleDateString("en-IN")} · ${o.items.reduce((s, i) => s + i.qty, 0)} items · ${inr(o.amounts.total)} · COD</span>${di && di.detail ? `<br/><span class="eta-line">${esc(di.headline)}${di.date && o.status !== "delivered" && o.status !== "cancelled" ? " · " + esc(new Date(di.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })) : ""}</span>` : ""}</div><div style="text-align:right"><span style="text-transform:capitalize;font-size:0.82rem;font-weight:600;color:var(--ink-2);background:var(--sand-2);padding:0.2rem 0.6rem;border-radius:99px;">${esc(o.status.replace(/_/g, " "))}</span></div></div>
       <div style="display:flex;gap:.8rem;margin-top:.6rem;flex-wrap:wrap"><a class="link-btn" href="/track/${esc(o.orderNo)}">Track order</a><button class="link-btn" data-detail="${esc(o.orderNo)}">View details</button>${["confirmed", "processing"].includes(o.status) ? `<button class="link-btn" data-cancel="${esc(o.orderNo)}">Cancel order</button>` : ""}</div>
-      <div data-dwrap="${esc(o.orderNo)}" hidden style="margin-top:.6rem">${o.items.map((i, k) => { const live = S.productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="summary-row"><span>${nm} × ${i.qty} (${esc(i.size)})</span><span>${o.status === "delivered" ? `<button class="link-btn" data-rev="${esc(o.orderNo)}::${k}">Review</button> ` : ""}${inr(i.price * i.qty)}</span></div>`; }).join("")}</div></div>`; }).join("") : `<div class="empty"><h2>No orders yet</h2><p class="muted">Orders placed on this device will appear here.</p><a class="btn btn-dark" href="/shop">Start Shopping</a></div>`}</div>`;
+      <div data-dwrap="${esc(o.orderNo)}" hidden style="margin-top:.6rem">${o.items.map((i, k) => { const live = S.productById(i.id); const nm = live ? `<a href="/product/${esc(i.id)}">${esc(i.name)}</a>` : esc(i.name); return `<div class="summary-row"><span>${nm} × ${i.qty} (${esc(i.size)})</span><span>${o.status === "delivered" ? `<button class="link-btn" data-rev="${esc(o.orderNo)}::${k}">Review</button> ` : ""}${inr(i.price * i.qty)}</span></div>`; }).join("")}</div></div>`; }).join("") : `<div class="empty"><h2>No orders yet</h2><p class="muted">Orders placed on this device will appear here.</p><a class="btn btn-dark" href="/shop">Start Shopping</a></div>`}</div>`;
     main.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => { const w = main.querySelector(`[data-dwrap="${b.dataset.detail}"]`); w.hidden = !w.hidden; }));
     main.querySelectorAll("[data-rev]").forEach((b) => (b.onclick = () => {
       const [orderNo, k] = b.dataset.rev.split("::");

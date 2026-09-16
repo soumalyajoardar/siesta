@@ -72,8 +72,8 @@ export function CartPage() {
     <div class="split">
       <div class="card" aria-label="Cart items">
         ${t.lines.map((l) => `<div class="cart-line">
-          <a class="cart-thumb" href="/product/${l.id}" aria-label="View ${esc(l.product.name)}">${productArt(l.product, 0, { w: 400 })}</a>
-          <div><h3><a href="/product/${l.id}">${esc(l.product.name)}</a></h3>
+          <a class="cart-thumb" href="/product/${esc(l.id)}" aria-label="View ${esc(l.product.name)}">${productArt(l.product, 0, { w: 400 })}</a>
+          <div><h3><a href="/product/${esc(l.id)}">${esc(l.product.name)}</a></h3>
             <p class="line-meta">Size ${esc(l.size)} · ${esc(l.color)}</p>
             <p class="line-meta">${(l.product.stock ?? 0) <= 5 ? `<strong style="color:var(--warning)">Only ${l.product.stock} left</strong>` : "In stock"}</p>
             <div class="line-controls">
@@ -130,7 +130,7 @@ export function CheckoutPage() {
       <aside class="card" aria-label="Order summary" style="position:sticky;top:calc(var(--header-h) + 12px)">
         <h2 style="margin:0 0 .4rem">Summary</h2>
         ${t.lines.map((l) => `<div class="summary-row"><span>${esc(l.product.name)} × ${l.qty} <span class="muted">(${esc(l.size)})</span></span><span>${inr(l.product.price * l.qty)}</span></div>`).join("")}
-        ${t.coupon ? `<div class="applied-coupon"><span>🎟️ ${esc(t.coupon.code)} — ${esc(t.coupon.code === "FLAT200" ? "₹1200 off" : t.coupon.value + "% off")}</span><button class="link-btn" id="rmCouponCheckout">Remove</button></div>`
+        ${t.coupon ? `<div class="applied-coupon"><span>🎟️ ${esc(t.coupon.code)} — ${esc(t.coupon.code === "FLAT200" ? "₹200 off" : t.coupon.value + "% off")}</span><button class="link-btn" id="rmCouponCheckout">Remove</button></div>`
         : `<form id="couponFormCheckout" class="coupon-row" style="margin: 1rem 0;"><label class="visually-hidden" for="couponInputCheckout">Coupon code</label><input id="couponInputCheckout" class="input" placeholder="Coupon code" autocomplete="off"/><button class="btn btn-outline btn-sm" type="submit">Apply</button></form>`}
         ${breakdownHTML(t)}
         <p class="muted" style="font-size:.82rem;margin-top:1rem;">Pay ${inr(t.total)} in cash/UPI on delivery.</p>
@@ -453,7 +453,7 @@ function trackHTML(o) {
   const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
   const aside = `<aside class="card track-aside"><h2 style="margin-top:0">Delivery details</h2>
     <p class="t-addr"><span aria-hidden="true">${addrIcon(o.address.label, 16)}</span><span>${esc(o.address.name)} <span class="muted" style="font-size:.8rem">${addrLabel(o.address.label)}</span><br/>${esc(o.address.line1)}<br/>${esc(o.address.city)}, ${esc(o.address.state)} ${esc(o.address.pin)}<br/>${esc(o.address.phone)}</span></p>
-    <h3>Items (${itemCount})</h3>${o.items.map((i) => { const live = productById(i.id); const nm = live ? `<a href="/product/${i.id}">${esc(i.name)}</a>` : esc(i.name); return `<div class="t-item"><span class="t-item-name">${nm} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`; }).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
+    <h3>Items (${itemCount})</h3>${o.items.map((i) => { const live = productById(i.id); const nm = live ? `<a href="/product/${esc(i.id)}">${esc(i.name)}</a>` : esc(i.name); return `<div class="t-item"><span class="t-item-name">${nm} × ${i.qty} <span class="muted">(${esc(i.size)})</span></span><span class="t-item-price">${inr(i.price * i.qty)}</span></div>`; }).join("")}${orderAmountsHTML(o.amounts)}<div class="summary-row total"><span>Total (COD)</span><span>${inr(o.amounts.total)}</span></div></aside>`;
 
   if (o.status === "cancelled") {
     const conf = o.timeline.find((t) => t.stage === "confirmed");
@@ -523,9 +523,9 @@ export function renderCartDrawer() {
     <div style="display:flex;flex-direction:column;gap:1rem">
     ${t.lines.map((l) => `
       <div style="display:flex;gap:1rem;padding-bottom:1rem;border-bottom:1px solid var(--line-2)">
-        <a href="/product/${l.id}" style="width:70px;flex-shrink:0" onclick="closeCartDrawer()">${productArt(l.product, 0, { w: 140 })}</a>
+        <a href="/product/${esc(l.id)}" style="width:70px;flex-shrink:0" onclick="closeCartDrawer()">${productArt(l.product, 0, { w: 140 })}</a>
         <div style="flex:1">
-          <h4 style="margin:0;font-size:0.95rem"><a href="/product/${l.id}" onclick="closeCartDrawer()">${esc(l.product.name)}</a></h4>
+          <h4 style="margin:0;font-size:0.95rem"><a href="/product/${esc(l.id)}" onclick="closeCartDrawer()">${esc(l.product.name)}</a></h4>
           <p class="muted" style="margin:0.2rem 0;font-size:0.85rem">${esc(l.size)} · ${esc(l.color)}</p>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem">
             <span class="mini-qty"><button onclick="SiestaCartUpdate(${l.idx}, ${l.qty-1})">−</button><output>${l.qty}</output><button onclick="SiestaCartUpdate(${l.idx}, ${l.qty+1})">+</button></span>

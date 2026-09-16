@@ -146,25 +146,23 @@ app.post("/api/contact", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not send message." }); }
 });
 
-// Public ticket list by email (for logged-in users to see their own tickets).
-app.get("/api/tickets", async (req, res) => {
+// Ticket list for logged-in customers — scoped to the session identity, never a query string.
+app.get("/api/tickets", requireCustomer, async (req, res) => {
   try {
-    const email = String(req.query.email || "").trim().toLowerCase();
-    if (!emailOk(email)) return res.status(400).json({ error: "Valid email required." });
+    const email = String(req.customer.email || "").trim().toLowerCase();
     const msgs = await store.getMessages();
     const userTickets = msgs.filter((m) => m.email.toLowerCase() === email).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json(userTickets);
   } catch (e) { res.status(500).json({ error: "Could not load tickets." }); }
 });
 
-// Public user reply to their own ticket.
-app.post("/api/tickets/:id/reply", async (req, res) => {
+// Authenticated user reply to their own ticket.
+app.post("/api/tickets/:id/reply", requireCustomer, async (req, res) => {
   try {
     const msgs = await store.getMessages();
     const m = msgs.find((x) => x.id === req.params.id);
     if (!m) return res.status(404).json({ error: "Ticket not found." });
-    const email = String(req.body.email || "").trim().toLowerCase();
-    if (m.email.toLowerCase() !== email) return res.status(403).json({ error: "Email mismatch." });
+    if (m.email.toLowerCase() !== String(req.customer.email || "").trim().toLowerCase()) return res.status(403).json({ error: "This ticket belongs to another account." });
     if (m.status === "closed") return res.status(400).json({ error: "This ticket is closed." });
     const message = String(req.body.message || "").trim().slice(0, 2000);
     if (message.length < 2) return res.status(400).json({ error: "Message too short." });
@@ -331,6 +329,16 @@ app.post("/api/orders", async (req, res) => {
     if (await maintenanceOn()) return res.status(503).json(maintenanceBlock());
     const { items, address, coupon, express } = req.body || {};
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Your cart is empty." });
+    // Merge duplicate lines (same product/size/color) so the per-line cap,
+    // stock check, totals, decrement and restock all use the aggregated qty.
+    const seen = new Map();
+    for (const it of items) {
+      const key = `${it && it.id}|||${it && it.size}|||${it && it.color}`;
+      const prev = seen.get(key);
+      if (prev) prev.qty = (Number(prev.qty) || 0) + (Number(it.qty) || 0);
+      else seen.set(key, { ...(it || {}) });
+    }
+    const mergedItems = [...seen.values()];
     const products = await getProducts();
     const settings = await getSettings();
     const a = address || {};
@@ -341,7 +349,7 @@ app.post("/api/orders", async (req, res) => {
 
     let subtotal = 0, mrpTotal = 0;
     const lines = [];
-    for (const it of items) {
+    for (const it of mergedItems) {
       const p = products.find((x) => x.id === it.id);
       if (!p) return res.status(400).json({ error: "A product in your cart no longer exists." });
       const qty = Math.min(Math.max(1, Number(it.qty) || 1), 10);
@@ -371,10 +379,10 @@ app.post("/api/orders", async (req, res) => {
     const roundOff = total - preRound;
     if (total > settings.codMaxOrder) return res.status(400).json({ error: `COD is available up to ₹${settings.codMaxOrder.toLocaleString("en-IN")}.` });
 
-    // Decrement stock.
+    // Decrement stock (summed per product, so pre-fix duplicate orders restock fully too).
     const updated = products.map((p) => {
-      const line = lines.find((l) => l.id === p.id);
-      return line ? { ...p, stock: p.stock - line.qty } : p;
+      const qty = lines.filter((l) => l.id === p.id).reduce((s, l) => s + l.qty, 0);
+      return qty ? { ...p, stock: p.stock - qty } : p;
     });
     await store.saveProducts(updated);
 
@@ -432,10 +440,10 @@ app.post("/api/orders/:orderNo/cancel", async (req, res) => {
     if (!["confirmed", "processing"].includes(o.status)) return res.status(400).json({ error: "This order can no longer be cancelled (already packed/shipped)." });
   o.status = "cancelled";
   o.timeline.push({ stage: "cancelled", at: new Date().toISOString(), note: STAGE_NOTES.cancelled });
-    // Restock.
+    // Restock (summed per product, so orders with duplicate lines restore fully).
     const products = (await getProducts()).map((p) => {
-      const line = o.items.find((l) => l.id === p.id);
-      return line ? { ...p, stock: p.stock + line.qty } : p;
+      const qty = o.items.filter((l) => l.id === p.id).reduce((s, l) => s + (Number(l.qty) || 0), 0);
+      return qty ? { ...p, stock: p.stock + qty } : p;
     });
     await store.saveProducts(products);
     await store.saveOrders(orders);
@@ -479,11 +487,12 @@ app.post("/api/auth/register", async (req, res) => {
       name: String(name).trim(), email: cleanEmail,
       phone: phone ? String(phone).replace(/\D/g, "").slice(-10) : "",
       salt, hash: custHash(password, salt),
+      tokenVersion: 0,
       marketing: !!marketing, addresses: [],
       createdAt: new Date().toISOString(),
     };
     await store.saveCustomers([user, ...list]);
-    res.status(201).json({ token: await custSign(user.id), user: sanitizeCustomer(user) });
+    res.status(201).json({ token: await custSign(user), user: sanitizeCustomer(user) });
   } catch (e) { res.status(500).json({ error: "Could not create your account. Please try again." }); }
 });
 
@@ -495,7 +504,7 @@ app.post("/api/auth/login", async (req, res) => {
     const user = (await store.getCustomers()).find((u) => u.email === String(email || "").trim().toLowerCase());
     const ok = user && (() => { try { return require("crypto").timingSafeEqual(Buffer.from(custHash(password, user.salt), "hex"), Buffer.from(user.hash, "hex")); } catch { return false; } })();
     if (!ok) { recordFailure(ip); return res.status(401).json({ error: "Incorrect email or password. Please try again." }); }
-    res.json({ token: await custSign(user.id), user: sanitizeCustomer(user) });
+    res.json({ token: await custSign(user), user: sanitizeCustomer(user) });
   } catch (e) { res.status(500).json({ error: "Login failed. Please try again." }); }
 });
 
@@ -559,6 +568,8 @@ app.post("/api/auth/password", requireCustomer, async (req, res) => {
     if (String(next || "").length < 8) return res.status(400).json({ error: "New password must be at least 8 characters." });
     u.salt = require("crypto").randomBytes(16).toString("hex");
     u.hash = custHash(next, u.salt);
+    // Revoke all previously issued sessions for this account.
+    u.tokenVersion = (u.tokenVersion ?? 0) + 1;
     await store.saveCustomers(list);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: "Could not change your password." }); }
