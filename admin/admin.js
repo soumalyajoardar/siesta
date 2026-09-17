@@ -182,7 +182,7 @@
         <div class="field"><label>Description</label><textarea class="input" name="desc" rows="3">${esc(p.desc || "")}</textarea></div>
         <div class="field"><label>Care instructions</label><input class="input" name="care" value="${esc(p.care || "")}" /></div>
         <div class="field"><label>Details — one per line</label><textarea class="input" name="details" rows="3">${esc((p.details || []).join("\n"))}</textarea></div>
-        <div style="display:flex;gap:1rem;margin:.4rem 0;flex-wrap:wrap"><label class="check-row"><input type="checkbox" name="isNew" ${p.isNew ? "checked" : ""} /> New arrival</label><label class="check-row"><input type="checkbox" name="bestseller" ${p.bestseller ? "checked" : ""} /> Best seller</label><label class="check-row" title="When ticked, shows only an estimated rating + count (e.g. 4.7 | 128) on the product. The reviews list always shows real verified reviews only — never fake texts."><input type="checkbox" name="autoReviews" ${p.autoReviews ? "checked" : ""} /> Show auto-generated rating</label></div>
+        <div style="display:flex;gap:1rem;margin:.4rem 0;flex-wrap:wrap"><label class="check-row"><input type="checkbox" name="isNew" ${p.isNew ? "checked" : ""} /> New arrival</label><label class="check-row"><input type="checkbox" name="bestseller" ${p.bestseller ? "checked" : ""} /> Best seller</label></div>
         <div class="field"><label>Product images <span class="muted">(first image = cover)</span></label>
           <div class="img-grid" id="imgGrid"></div>
           <label class="drop">Click or drop images here to upload (JPG/PNG/WebP/GIF/AVIF, ≤5MB each)<input type="file" id="imgInput" accept="image/*" multiple /></label>
@@ -616,15 +616,30 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
     try {
       const list = await api("/api/admin/customers");
       $("#view").innerHTML = `
-        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
           <div class="stat"><span>Total customers</span><strong>${list.length}</strong></div>
           <div class="stat"><span>Marketing opt-ins</span><strong>${list.filter((c) => c.marketing).length}</strong></div>
+          <div class="stat"><span>Blocked</span><strong>${list.filter((c) => c.blocked).length}</strong></div>
         </div>
         <div class="card" style="padding:0;overflow:auto"><table class="tbl">
-          <tr><th>Customer</th><th>Phone</th><th>Addresses</th><th>Joined</th></tr>
-          ${list.map((c) => `<tr><td><strong>${esc(c.name)}</strong><br /><span class="muted small">${esc(c.email)}${c.marketing ? " · ✉ offers" : ""}</span></td><td>${esc(c.phone || "—")}</td><td>${c.addresses}</td><td class="muted small">${new Date(c.createdAt).toLocaleDateString("en-IN")}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">No customer accounts yet.</td></tr>`}
+          <tr><th>Customer</th><th>Phone</th><th>Addresses</th><th>Joined</th><th>Action</th></tr>
+          ${list.map((c) => `<tr ${c.blocked ? 'style="opacity:0.6;background:var(--sand)"' : ''}><td><strong>${esc(c.name)}</strong>${c.blocked ? ' <span class="badge sale">Blocked</span>' : ''}<br /><span class="muted small">${esc(c.email)}${c.marketing ? " · ✉ offers" : ""}</span>${c.blockReason ? `<br/><span class="muted small" style="color:var(--clay)">Reason: ${esc(c.blockReason)}</span>` : ""}</td><td>${esc(c.phone || "—")}</td><td>${c.addresses}</td><td class="muted small">${new Date(c.createdAt).toLocaleDateString("en-IN")}</td><td><button class="btn btn-sm ${c.blocked ? 'btn-outline' : 'btn-light'}" data-cblock="${esc(c.id)}" data-bstate="${c.blocked ? '1' : '0'}">${c.blocked ? "Unblock" : "Block"}</button></td></tr>`).join("") || `<tr><td colspan="5" class="muted">No customer accounts yet.</td></tr>`}
         </table></div>
         <p class="muted small">Accounts live in the database, so customers stay logged in on every device. Passwords are stored hashed and are never shown here.</p>`;
+
+      $$("#view [data-cblock]").forEach((b) => (b.onclick = async () => {
+        const id = b.dataset.cblock;
+        const isBlocked = b.dataset.bstate === "1";
+        const reason = isBlocked ? "" : prompt("Reason for blocking this account (shown to customer):");
+        if (!isBlocked && reason === null) return;
+        
+        try {
+          b.disabled = true;
+          await api("/api/admin/customers/" + encodeURIComponent(id) + "/block", { method: "PATCH", body: JSON.stringify({ blocked: !isBlocked, reason: reason || "" }) });
+          toast(isBlocked ? "Account unblocked." : "Account blocked successfully.");
+          vCustomers();
+        } catch (e) { toast(e.message, "error"); b.disabled = false; }
+      }));
     } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }
 

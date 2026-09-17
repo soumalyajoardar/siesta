@@ -167,6 +167,7 @@ async function requireCustomer(req, res, next) {
     const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const user = await custValid(token);
     if (!user) return res.status(401).json({ error: "Please log in to continue." });
+    if (user.blocked) return res.status(403).json({ error: user.blockReason || "Your account has been suspended." });
     req.customer = user;
     next();
   } catch {

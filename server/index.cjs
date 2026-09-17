@@ -196,21 +196,8 @@ function ratingMap(reviews) {
     m[r.productId].sum += r.rating;
   }
   const out = {};
-  for (const [k, v] of Object.entries(m)) out[k] = { count: v.count, sum: v.sum, avg: Math.round((v.sum / v.count) * 10) / 10 };
+  for (const [k, v] of Object.entries(m)) out[k] = { count: v.count, avg: Math.round((v.sum / v.count) * 10) / 10 };
   return out;
-}
-
-function getRatingForProduct(p, realRating) {
-  let count = realRating ? realRating.count : 0;
-  let sum = realRating ? realRating.sum : 0;
-  if (p.autoReviews) {
-    const h = (s) => String(s).split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
-    const fakeAvg = Number((4.5 + (Math.abs(h(p.id)) % 5) / 10).toFixed(1));
-    const fakeCount = 50 + (Math.abs(h(p.id)) % 150);
-    count += fakeCount;
-    sum += (fakeAvg * fakeCount);
-  }
-  return { count, avg: count === 0 ? 0 : Math.round((sum / count) * 10) / 10 };
 }
 
 app.get("/api/products", async (req, res) => {
@@ -224,7 +211,7 @@ app.get("/api/products", async (req, res) => {
       const n = String(q).toLowerCase();
       list = list.filter((p) => [p.name, p.category, p.gender, p.desc, p.material].join(" ").toLowerCase().includes(n));
     }
-    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p), rating: getRatingForProduct(p, ratings[p.id]) })));
+    res.json(list.map((p) => ({ ...p, discountPct: discountPct(p), rating: ratings[p.id] || { count: 0, avg: 0 } })));
   } catch (e) { res.status(500).json({ error: "Could not load products." }); }
 });
 
@@ -232,7 +219,7 @@ app.get("/api/products/:id", async (req, res) => {
   try {
     const p = (await getProducts()).find((x) => x.id === req.params.id);
     if (!p) return res.status(404).json({ error: "Product not found." });
-    const r = getRatingForProduct(p, ratingMap(await getReviews())[p.id]);
+    const r = ratingMap(await getReviews())[p.id] || { count: 0, avg: 0 };
     res.json({ ...p, discountPct: discountPct(p), rating: r });
   } catch (e) { res.status(500).json({ error: "Could not load the product." }); }
 });
@@ -506,6 +493,7 @@ app.post("/api/auth/login", async (req, res) => {
     const user = (await store.getCustomers()).find((u) => u.email === String(email || "").trim().toLowerCase());
     const ok = user && (() => { try { return require("crypto").timingSafeEqual(Buffer.from(custHash(password, user.salt), "hex"), Buffer.from(user.hash, "hex")); } catch { return false; } })();
     if (!ok) { recordFailure(ip); return res.status(401).json({ error: "Incorrect email or password. Please try again." }); }
+    if (user.blocked) return res.status(403).json({ error: user.blockReason || "Your account has been suspended." });
     res.json({ token: await custSign(user), user: sanitizeCustomer(user) });
   } catch (e) { res.status(500).json({ error: "Login failed. Please try again." }); }
 });
@@ -641,7 +629,6 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
     const products = await getProducts();
     const p = sanitizeProduct(req.body, true);
     if (products.some((x) => x.id === p.id)) return res.status(409).json({ error: "A product with this ID already exists." });
-    p.autoReviews = !!req.body.autoReviews;
     await store.saveProducts([p, ...products]);
     res.status(201).json(p);
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -652,7 +639,7 @@ app.put("/api/admin/products/:id", requireAdmin, async (req, res) => {
     const i = products.findIndex((x) => x.id === req.params.id);
     if (i < 0) return res.status(404).json({ error: "Product not found." });
     const keep = products[i];
-    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, added: keep.added, popularity: keep.popularity ?? 50, autoReviews: !!req.body.autoReviews };
+    products[i] = { ...sanitizeProduct(req.body, false), id: keep.id, added: keep.added, popularity: keep.popularity ?? 50 };
     await store.saveProducts(products);
     res.json(products[i]);
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -879,8 +866,24 @@ app.get("/api/admin/customers", requireAdmin, async (req, res) => {
     res.json((await store.getCustomers()).map((u) => ({
       id: u.id, name: u.name, email: u.email, phone: u.phone || "",
       marketing: !!u.marketing, addresses: (u.addresses || []).length, createdAt: u.createdAt,
+      blocked: !!u.blocked, blockReason: u.blockReason || ""
     })));
   } catch (e) { res.status(500).json({ error: "Could not load customers." }); }
+});
+
+app.patch("/api/admin/customers/:id/block", requireAdmin, async (req, res) => {
+  try {
+    const list = await store.getCustomers();
+    const idx = list.findIndex(u => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: "Customer not found." });
+
+    list[idx].blocked = !!req.body.blocked;
+    list[idx].blockReason = req.body.reason || "";
+    if (list[idx].blocked) list[idx].tokenVersion = (list[idx].tokenVersion || 0) + 1;
+
+    await store.saveCustomers(list);
+    res.json({ ok: true, blocked: list[idx].blocked, blockReason: list[idx].blockReason });
+  } catch (e) { res.status(500).json({ error: "Could not update block status." }); }
 });
 
 app.delete("/api/admin/orders/:orderNo", requireAdmin, async (req, res) => {

@@ -41,8 +41,10 @@ export function cardHTML(p, i = 0) {
     const stockTxt = !inStock(p) ? "Out of stock" : lowStock(p) ? `Only ${p.stock} left` : "In stock";
     
     let starsHtml = '';
-    if (p.rating && p.rating.count > 0) {
-      starsHtml = `<div class="card-stars" aria-label="${p.rating.avg} out of 5 stars" style="position:absolute; bottom:.7rem; left:.7rem; background:#fff; padding:.25rem .45rem; border-radius:6px; border:1px solid var(--line); display:flex; align-items:center; gap:.3rem; font-size:.8rem; font-weight:700; z-index:2; box-shadow:0 2px 5px rgba(0,0,0,0.05);">${p.rating.avg} <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--gold)" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> <span style="color:var(--line-2)">|</span> <span class="muted" style="font-size:.8rem; font-weight: 500">${p.rating.count}</span></div>`;
+    if (p.rating) {
+      const avg = p.rating.count > 0 ? p.rating.avg : 0;
+      const count = p.rating.count;
+      starsHtml = `<div class="card-stars" aria-label="${avg} out of 5 stars" style="position:absolute; bottom:.7rem; left:.7rem; background:#fff; padding:.25rem .45rem; border-radius:6px; border:1px solid var(--line); display:flex; align-items:center; gap:.3rem; font-size:.8rem; font-weight:700; z-index:2; box-shadow:0 2px 5px rgba(0,0,0,0.05);">${avg} <svg width="12" height="12" viewBox="0 0 24 24" fill="${count > 0 ? 'var(--gold)' : 'none'}" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> <span style="color:var(--line-2)">|</span> <span class="muted" style="font-size:.8rem; font-weight: 500">${count}</span></div>`;
     }
     
     return `<article class="p-card reveal" style="transition-delay:${Math.min(i * 40, 320)}ms; display:flex; flex-direction:column; height:100%">
@@ -758,40 +760,29 @@ export function ProductPage(id) {
       let count = list.length;
       let sum = list.reduce((s, x) => s + x.rating, 0);
       
-      if (p.autoReviews) {
-        const h = (s) => String(s).split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
-        const fakeAvg = Number((4.5 + (Math.abs(h(p.id)) % 5) / 10).toFixed(1));
-        const fakeCount = 50 + (Math.abs(h(p.id)) % 150);
-        count += fakeCount;
-        sum += (fakeAvg * fakeCount);
+      const head = root.querySelector("#pdpRevHead");
+      if (head) head.innerHTML = `<span>Reviews <strong style="font-size:0.85em;">(${count})</strong></span> <span aria-hidden="true">+</span>`;
+      
+      const avg = count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
+      if (count > 0) setProductJsonLd(p, { avg, count });
+      else setProductJsonLd(p, null);
+      
+      const line = root.querySelector("#pdpRatingLine");
+      if (line) {
+        line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="${avg} out of 5 from ${count} reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${count} reviews`)} <strong>${avg}</strong> <span class="muted">· ${count} review${count === 1 ? "" : "s"}</span></button>`;
+        line.querySelector("#pdpRatingJump").onclick = () => {
+          const rHead = root.querySelector("#pdpRevHead");
+          if (rHead) {
+            const headerOffset = 100;
+            window.scrollTo({ top: rHead.getBoundingClientRect().top + window.scrollY - headerOffset, behavior: "smooth" });
+          }
+        };
       }
       
       if (count === 0) {
-        box.innerHTML = eligBtn + "<p>No reviews yet for this style. Bought it? You can review it from your delivered order.</p>";
-        setProductJsonLd(p, null);
+        box.innerHTML = eligBtn + `<p>${stars(0, `0 out of 5 from 0 reviews`)} <strong>0</strong> · 0 reviews</p><p class="muted">No reviews yet for this style. Bought it? You can review it from your delivered order.</p>`;
       } else {
-        const head = root.querySelector("#pdpRevHead");
-        if (head) head.innerHTML = `<span>Reviews <strong style="font-size:0.85em;">(${count})</strong></span> <span aria-hidden="true">+</span>`;
-        
-        const avg = Math.round((sum / count) * 10) / 10;
-        setProductJsonLd(p, { avg, count });
-        const line = root.querySelector("#pdpRatingLine");
-        if (line) {
-          line.innerHTML = `<button class="rating-jump" id="pdpRatingJump" aria-label="Rated ${avg} out of 5 from ${count} reviews. Jump to reviews.">${stars(avg, `${avg} out of 5 from ${count} reviews`)} <strong>${avg}</strong> <span class="muted">· ${count} review${count === 1 ? "" : "s"}</span></button>`;
-          line.querySelector("#pdpRatingJump").onclick = () => {
-            const head = root.querySelector("#pdpRevHead");
-            if (head) {
-              const headerOffset = 100;
-              window.scrollTo({ top: head.getBoundingClientRect().top + window.scrollY - headerOffset, behavior: "smooth" });
-            }
-          };
-        }
-        
-        let textsHTML = list.length ? list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)} <strong>${esc(r.title || "Verified review")}</strong> <span class="verified-icon" aria-label="Verified" style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></span><time style="margin-left:auto">${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.name || r.author)}</p></div>`).join("") : "";
-        if (p.autoReviews && list.length === 0) {
-            textsHTML = `<p class="muted">No written reviews yet — showing estimated rating summary only.</p>`;
-        }
-        
+        let textsHTML = list.map((r) => `<div class="review"><div class="review-head">${stars(r.rating)} <strong>${esc(r.title || "Verified review")}</strong> <span class="verified-icon" aria-label="Verified" style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></span><time style="margin-left:auto">${new Date(r.createdAt).toLocaleDateString("en-IN")}</time></div><p>${esc(r.text)}</p><p class="muted" style="font-size:.82rem">— ${esc(r.name || r.author)}</p></div>`).join("");
         box.innerHTML = eligBtn + `<p>${stars(avg, `${avg} out of 5 from ${count} reviews`)} <strong>${avg}</strong> · ${count} review${count === 1 ? "" : "s"}</p>` + textsHTML;
       }
       const btn = box.querySelector("#pdpReviewBtn");
