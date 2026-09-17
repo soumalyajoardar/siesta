@@ -210,7 +210,8 @@ function wireCheckout(t) {
         coState.address = addr; coState.step = 2; refresh();
       };
     } else if (coState.step === 2) {
-      const expressEta = new Date().getHours() < 17 ? "Arriving today" : "Arriving tomorrow";
+      const d = new Date(), h = d.getHours(), m = d.getMinutes();
+      const expressEta = (h >= 17 && h < 23) || (h === 23 && m === 0) ? "Arriving tomorrow" : "Arriving today";
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Delivery method</h2>
         <label class="pay-option ${!coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="standard" ${!coState.express ? 'checked' : ''}/><span><strong><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg> Standard delivery (3–6 days)</strong><br/><span class="muted">${t.subtotal - t.discount >= STORE.freeShipThreshold ? "Free — your order qualifies for complimentary shipping" : "₹80"}</span></span></label>
         <label class="pay-option ${coState.express ? 'selected' : ''}"><input type="radio" name="delivery" value="express" ${coState.express ? 'checked' : ''}/><span><strong><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Express delivery (${expressEta})</strong><br/><span class="muted">₹150</span></span></label>
@@ -230,7 +231,8 @@ function wireCheckout(t) {
       main.querySelector("#back2").onclick = () => { coState.step = 2; refresh(); };
       main.querySelector("#toReview").onclick = () => { coState.step = 4; refresh(); };
     } else {
-      const expressEta = new Date().getHours() < 17 ? "Arriving today" : "Arriving tomorrow";
+      const d = new Date(), h = d.getHours(), m = d.getMinutes();
+      const expressEta = (h >= 17 && h < 23) || (h === 23 && m === 0) ? "Arriving tomorrow" : "Arriving today";
       main.innerHTML = `<div class="card"><h2 style="margin-top:0">Review & place order</h2>
         <p><strong>Deliver to:</strong> ${esc(coState.address.name)}, ${esc(coState.address.line1)}, ${esc(coState.address.city)} ${esc(coState.address.pin)} · ${esc(coState.address.phone)}</p>
         <p><strong>Delivery:</strong> ${coState.express ? "Express delivery (" + expressEta + ")" : "Standard delivery (3–6 days)"}</p>

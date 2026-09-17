@@ -404,16 +404,18 @@ app.post("/api/orders", async (req, res) => {
         if (cu) { customerId = cu.id; customerEmail = cu.email; }
       }
     } catch { /* guest checkout continues anonymously */ }
-    const order = {
-      orderNo, createdAt: now, items: lines,
-      customerId, customerEmail,
-      address: { name: a.name, phone: a.phone, line1: a.line1, land: a.land || "", city: a.city, state: a.state, pin: a.pin, country: "India" },
-      payment: "Cash on Delivery", coupon: couponCode,
-      amounts: { subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total },
-      status: "confirmed",
-      express: express ? { option: new Date().getHours() < 17 ? "today" : "tomorrow", at: now } : null,
-      timeline: [{ stage: "confirmed", at: now, note: "Order placed — Cash on Delivery" }],
-    };
+      const d = new Date(), h = d.getHours(), m = d.getMinutes();
+      const isTomorrow = (h >= 17 && h < 23) || (h === 23 && m === 0);
+      const order = {
+        orderNo, createdAt: now, items: lines,
+        customerId, customerEmail,
+        address: { name: a.name, phone: a.phone, line1: a.line1, land: a.land || "", city: a.city, state: a.state, pin: a.pin, country: "India" },
+        payment: "Cash on Delivery", coupon: couponCode,
+        amounts: { subtotal, mrpTotal, savings: mrpTotal - subtotal, discount, shipping, roundOff, total },
+        status: "confirmed",
+        express: express ? { option: isTomorrow ? "tomorrow" : "today", at: now } : null,
+        timeline: [{ stage: "confirmed", at: now, note: "Order placed — Cash on Delivery" }],
+      };
     await store.saveOrders([order, ...(await getOrders())]);
     res.status(201).json(order);
   } catch (e) {
