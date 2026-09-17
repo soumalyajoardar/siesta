@@ -187,6 +187,7 @@
           <div class="img-grid" id="imgGrid"></div>
           <label class="drop">Click or drop images here to upload (JPG/PNG/WebP/GIF/AVIF, ≤5MB each)<input type="file" id="imgInput" accept="image/*" multiple /></label>
           <div style="display:flex;gap:.5rem;margin-top:.6rem"><input class="input" id="imgUrl" placeholder="…or paste a folder URL like /images/tee-front.webp" style="flex:1" /><button type="button" class="btn btn-light btn-sm" id="imgUrlAdd">Add</button></div>
+          <div style="margin-top:.6rem;text-align:right;"><button type="button" class="btn btn-light btn-sm" id="genPromptBtn">✨ Copy AI Image Prompt</button></div>
         </div>
         <p class="err" id="pErr"></p>
         <button class="btn btn-dark btn-block" type="submit">${id ? "Save Changes" : "Create Product"}</button>
@@ -199,6 +200,47 @@
       $$("#imgGrid [data-rm]").forEach((b) => (b.onclick = () => { images.splice(Number(b.dataset.rm), 1); drawImgs(); }));
     };
     drawImgs();
+    const genBtn = $("#genPromptBtn");
+    if (genBtn) {
+      genBtn.addEventListener("click", () => {
+        const form = $("#pForm");
+        if (!form) return;
+        const fd = new FormData(form);
+          const name = fd.get("name") || "stylish clothing";
+          let gender = fd.get("gender") || "unisex";
+          if (gender === "unisex") gender = "male or female";
+          if (gender === "men") gender = "male";
+          if (gender === "women") gender = "female";
+          const desc = fd.get("desc") || "";
+          const colorLines = String(fd.get("colors") || "").split("\n").map(x => x.split(":")[0].trim()).filter(Boolean).join(" and ");
+          const colors = colorLines ? ` in ${colorLines}` : "";
+          const material = fd.get("material") ? ` made of ${fd.get("material")}` : "";
+          const prompt = `Create one hyper-realistic professional fashion photograph of an Indian ${gender} adult model posing naturally for a premium commercial clothing campaign, wearing ${name}${colors}${material}. ${desc ? "\\n\\n" + desc : ""}
+
+The image should look like a genuine photograph from a high-end professional fashion/e-commerce studio shoot, captured with a professional full-frame camera.
+
+The model should have a natural, confident, relaxed pose that clearly showcases the fit, silhouette, fabric, sleeves, collar, and overall appearance of the clothing. Keep the pose stylish but understated and suitable for a premium clothing brand.
+
+Use a slightly close-up portrait composition, 4:5 aspect ratio, with the clothing filling most of the frame while maintaining comfortable margins.
+
+Background: seamless warm off-white studio background, approximately #F1ECE3 to #EFE9DD. Clean, minimal, and distraction-free.
+
+Lighting: soft, diffused, daylight-balanced professional studio lighting with gentle fill from both sides. Natural skin tones, realistic fabric texture, accurate clothing color, and very soft shadows.
+
+The clothing must look physically real, with authentic fabric texture, stitching, folds, seams, and natural draping. Accurately preserve the color without changing its hue or saturation.
+
+Add a subtle “Siesta.” logo naturally onto the clothing as if it is genuinely printed or embroidered on the garment.
+
+No props, no furniture, no scenery, no additional people, no promotional graphics, no sale badges, no watermark, no text other than the Siesta logo, and no artificial/CGI appearance.
+
+Style: premium, minimal, modern, photorealistic, sophisticated commercial fashion photography.`;
+          navigator.clipboard.writeText(prompt).then(() => {
+          toast("Prompt copied to clipboard!");
+        }).catch(() => {
+          window.prompt("Copy this prompt:", prompt);
+        });
+      });
+    }
     $("#imgInput").addEventListener("change", async (e) => {
       if (!e.target.files.length) return;
       try {
