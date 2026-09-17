@@ -871,50 +871,6 @@ app.delete("/api/admin/reviews/:id", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: "Could not delete the review." }); }
 });
 
-/* ---------------- admin: contact messages (customer support inbox) ---------------- */
-app.get("/api/admin/messages", requireAdmin, async (req, res) => {
-  try {
-    res.json((await store.getMessages()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-  } catch (e) { res.status(500).json({ error: "Could not load messages." }); }
-});
-app.post("/api/admin/messages/:id/reply", requireAdmin, async (req, res) => {
-    try {
-      const msgs = await store.getMessages();
-      const m = msgs.find(x => x.id === req.params.id);
-      if (!m) return res.status(404).json({ error: "Ticket not found." });
-      
-      if (!m.replies) m.replies = [];
-      m.replies.push({
-        from: "Admin",
-        message: String(req.body.message || "").trim(),
-        createdAt: new Date().toISOString()
-      });
-      m.status = "open"; // keep open until explicitly closed
-      
-      await store.saveMessages(msgs);
-      res.json({ ok: true, ticket: m });
-    } catch (e) { res.status(500).json({ error: "Could not reply." }); }
-  });
-
-  app.post("/api/admin/messages/:id/close", requireAdmin, async (req, res) => {
-    try {
-      const msgs = await store.getMessages();
-      const m = msgs.find(x => x.id === req.params.id);
-      if (!m) return res.status(404).json({ error: "Ticket not found." });
-      
-      m.status = "closed";
-      await store.saveMessages(msgs);
-      res.json({ ok: true, ticket: m });
-    } catch (e) { res.status(500).json({ error: "Could not close ticket." }); }
-  });
-  
-  app.delete("/api/admin/messages/:id", requireAdmin, async (req, res) => {
-  try {
-    await store.saveMessages((await store.getMessages()).filter((m) => m.id !== req.params.id));
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: "Could not delete the message." }); }
-});
-
 /* ---------------- admin: customers (read-only list, no password data) ---------------- */
 app.get("/api/admin/customers", requireAdmin, async (req, res) => {
   try {

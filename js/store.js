@@ -407,7 +407,18 @@ export function deliveryInfo(o) {
     const at = hit ? new Date(hit.at).getTime() : new Date(o.createdAt).getTime();
     return { kind: "delivered", headline: "Delivered", detail: "Delivered on " + fmtDay(at), date: at, daysLeft: 0 };
   }
-  const target = new Date(o.createdAt).getTime() + (o.express ? 2 : 5) * DAY_MS;
+  
+  let target;
+  if (o.express && typeof o.express === "object" && o.express.option) {
+    target = new Date(o.createdAt).getTime() + (o.express.option === "tomorrow" ? 1 : 0) * DAY_MS;
+  } else {
+    target = new Date(o.createdAt).getTime() + (o.express ? 2 : 5) * DAY_MS;
+  }
+  
+  if (o.status === "out_for_delivery") {
+    return { kind: "active", headline: "Arriving today", detail: "Out for delivery today", date: Date.now(), daysLeft: 0 };
+  }
+
   const daysLeft = Math.ceil((startOfDay(target) - startOfDay(Date.now())) / DAY_MS);
   const headline = daysLeft > 1 ? `Arriving in ${daysLeft} days` : daysLeft === 1 ? "Arriving tomorrow" : daysLeft === 0 ? "Arriving today" : "Delayed — arriving soon";
   const detail = "Estimated delivery " + fmtDay(target) + (o.express ? " · express" : "");

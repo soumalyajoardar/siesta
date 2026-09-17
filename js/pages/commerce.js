@@ -473,11 +473,7 @@ function trackHTML(o) {
   const stepNo = Math.min((o.stageIndex ?? 0) + 1, stages.length);
   const dInfo = S.deliveryInfo(o);
   const isExpress = Boolean(o.express) && o.status !== "delivered";
-  const etaText = o.status === "delivered"
-    ? "Delivered — enjoy!"
-    : isExpress
-      ? `Arriving ${o.express.option === "tomorrow" ? "Tomorrow" : "Today"}`
-      : dInfo ? dInfo.headline : "Arriving soon";
+  const etaText = o.status === "delivered" ? "Delivered — enjoy!" : (dInfo ? dInfo.headline : "Arriving soon");
   return `${crumbs}
   <div class="split"><div class="card track-card">
       <div class="track-hero">

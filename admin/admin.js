@@ -90,12 +90,12 @@
   $("#logoutBtn").addEventListener("click", showLogin);
 
   /* ---------- router ---------- */
-  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", customers: "Customers", reviews: "Reviews", messages: "Messages", coupons: "Coupons", media: "Media Library", settings: "Settings" };
+  const TITLES = { overview: "Overview", products: "Products", events: "Events", homepage: "Homepage", orders: "Orders", customers: "Customers", reviews: "Reviews", coupons: "Coupons", media: "Media Library", settings: "Settings" };
   let productsCache = [];
   function nav(view) {
     $$("#sideNav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     $("#viewTitle").textContent = TITLES[view];
-    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, customers: vCustomers, reviews: vReviews, messages: vMessages, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
+    ({ overview: vOverview, products: vProducts, events: vEvents, homepage: vHomepage, orders: vOrders, customers: vCustomers, reviews: vReviews, coupons: vCoupons, media: vMedia, settings: vSettings })[view]();
   }
   $("#sideNav").addEventListener("click", (e) => { if (e.target.dataset.view) nav(e.target.dataset.view); });
 
@@ -656,121 +656,6 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
         try { await api("/api/admin/reviews/" + encodeURIComponent(b.dataset.rdel), { method: "DELETE" }); toast("Review deleted."); vReviews(); }
         catch (e) { toast(e.message, "error"); }
       }));
-    } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
-  }
-
-  /* ---------- messages (customer support inbox) ---------- */
-  async function vMessages() {
-    $("#view").innerHTML = "<p class='muted'>Loading...</p>";
-    try {
-      const list = await api("/api/admin/messages");
-      
-      const render = () => {
-        $("#view").innerHTML = `
-          <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
-            <div class="stat"><span>Total tickets</span><strong>${list.length}</strong></div>
-            <div class="stat"><span>Open</span><strong>${list.filter(m => (m.status || 'open') !== 'closed').length}</strong></div>
-            <div class="stat"><span>Closed</span><strong>${list.filter(m => m.status === 'closed').length}</strong></div>
-          </div>
-          <div class="card" style="padding:0;overflow:auto"><table class="tbl">
-            <tr><th>Ticket ID</th><th>Status</th><th>Date</th><th>Customer</th><th>Subject</th><th></th></tr>
-            ${list.map((m) => `<tr>
-              <td class="muted small">${esc(m.id.slice(0,8).toUpperCase())}</td>
-              <td><span class="badge ${(m.status||'open')==='closed'?'sale':'new'}">${esc((m.status||'open').toUpperCase())}</span></td>
-              <td class="muted small">${new Date(m.createdAt).toLocaleString("en-IN")}</td>
-              <td><strong>${esc(m.name)}</strong><br /><a class="muted small" href="mailto:${esc(m.email)}">${esc(m.email)}</a></td>
-              <td><span class="muted">${esc(m.message.slice(0, 80))}${m.message.length > 80 ? "..." : ""}</span></td>
-              <td style="white-space:nowrap">
-                <button class="btn btn-light btn-sm" data-mview="${esc(m.id)}">View Ticket</button>
-              </td>
-            </tr>`).join("") || `<tr><td colspan="6" class="muted">No support tickets found.</td></tr>`}
-          </table></div>
-        `;
-        
-        $$("#view [data-mview]").forEach(b => {
-          b.onclick = () => {
-            const m = list.find(x => x.id === b.dataset.mview);
-            if (!m) return;
-            const root = $("#modalRoot");
-            const renderModal = () => {
-              root.innerHTML = `
-                <div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px">
-                  <div class="modal-head">
-                    <strong>Ticket #${m.id.slice(0,8).toUpperCase()} - ${(m.status||'open').toUpperCase()}</strong>
-                    <button class="btn btn-light btn-sm" id="mClose">Close ✕</button>
-                  </div>
-                  <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem; max-height:60vh; overflow-y:auto; background:var(--sand)">
-                    <div style="background:#fff; padding:1rem; border-radius:8px; border:1px solid var(--line)">
-                      <div style="display:flex; justify-content:space-between; margin-bottom:.5rem;">
-                        <strong>${esc(m.name)} (${esc(m.email)})</strong>
-                        <span class="muted small">${new Date(m.createdAt).toLocaleString()}</span>
-                      </div>
-                      <p style="margin:0; white-space:pre-wrap">${esc(m.message)}</p>
-                    </div>
-                    ${(m.replies || []).map(r => `
-                      <div style="background:${r.from==='Admin'?'#E9F5E9':'#fff'}; padding:1rem; border-radius:8px; border:1px solid var(--line); margin-left:${r.from==='Admin'?'2rem':'0'}; margin-right:${r.from==='Admin'?'0':'2rem'}">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:.5rem;">
-                          <strong>${esc(r.from)}</strong>
-                          <span class="muted small">${new Date(r.createdAt).toLocaleString()}</span>
-                        </div>
-                        <p style="margin:0; white-space:pre-wrap">${esc(r.message)}</p>
-                      </div>
-                    `).join("")}
-                  </div>
-                  ${m.status !== 'closed' ? `
-                  <div style="padding:1rem; border-top:1px solid var(--line); background:#fff">
-                    <textarea id="replyText" class="input" rows="3" placeholder="Type your reply here..." style="width:100%; margin-bottom:.8rem"></textarea>
-                    <div style="display:flex; justify-content:space-between">
-                      <button class="btn btn-light" id="btnCloseTicket">Close Ticket</button>
-                      <button class="btn btn-dark" id="btnSendReply">Send Reply</button>
-                    </div>
-                  </div>
-                  ` : `<div style="padding:1rem; border-top:1px solid var(--line); background:#fff; text-align:center"><p class="muted" style="margin:0">This ticket is closed.</p></div>`}
-                </div></div>
-              `;
-              
-              root.querySelector("#mClose").onclick = () => root.innerHTML = "";
-              root.querySelector(".modal-scrim").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-scrim")) root.innerHTML = ""; });
-              
-              if (m.status !== 'closed') {
-                root.querySelector("#btnSendReply").onclick = async () => {
-                  const text = root.querySelector("#replyText").value.trim();
-                  if (!text) return toast("Message cannot be empty", "error");
-                  try {
-                    root.querySelector("#btnSendReply").disabled = true;
-                    const res = await api("/api/admin/messages/" + encodeURIComponent(m.id) + "/reply", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ message: text }) });
-                    m.replies = res.ticket.replies;
-                    toast("Reply sent.");
-                    renderModal(); // re-render modal with new replies
-                  } catch (e) { toast(e.message, "error"); root.querySelector("#btnSendReply").disabled = false; }
-                };
-                
-                root.querySelector("#btnCloseTicket").onclick = async () => {
-                  if (!confirm("Are you sure you want to close this ticket?")) return;
-                  try {
-                    root.querySelector("#btnCloseTicket").disabled = true;
-                    const res = await api("/api/admin/messages/" + encodeURIComponent(m.id) + "/close", { method: "POST" });
-                    m.status = res.ticket.status;
-                    toast("Ticket closed.");
-                    renderModal();
-                  } catch (e) { toast(e.message, "error"); root.querySelector("#btnCloseTicket").disabled = false; }
-                };
-              }
-            };
-            renderModal();
-            // Also listen for modal close to re-render the list view to update statuses
-            const observer = new MutationObserver((mutations) => {
-              if (root.innerHTML === "") {
-                render(); // refresh the main list view when modal closes
-                observer.disconnect();
-              }
-            });
-            observer.observe(root, { childList: true });
-          };
-        });
-      };
-      
-      render();
     } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   }
 
