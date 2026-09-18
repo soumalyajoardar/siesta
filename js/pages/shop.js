@@ -436,6 +436,29 @@ export function HomePage() {
   return `<div class="page">
     ${heroHTML}
 
+    <section class="reveal" style="padding: 0 5%; margin: 2rem 0; margin-top: 3rem;">
+      <div style="background: var(--ink); border-radius: 12px; padding: 3rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 3rem; position: relative; overflow: hidden;">
+        <div style="position: relative; z-index: 2; flex: 1 1 300px;">
+          <span style="background: var(--gold); color: #000; font-size: 0.75rem; font-weight: 700; padding: 0.3rem 0.8rem; border-radius: 99px; text-transform: uppercase; letter-spacing: 1px;">Coming Soon</span>
+          <h2 style="font-family: var(--font-display); font-size: clamp(2rem, 4vw, 2.5rem); margin: 1rem 0 0.5rem; color: #fff;">The Siesta App</h2>
+          <p style="color: #a3a3a3; margin: 0; max-width: 45ch; line-height: 1.6; font-size: 1.1rem;">Get ready for a seamless shopping experience. Exclusive drops, early access, and lightning-fast checkout, right in your pocket.</p>
+        </div>
+        <div style="position: relative; z-index: 2; display: flex; gap: 1rem; flex-wrap: wrap;">
+          <div style="width: 140px; height: 280px; background: #000; border: 4px solid #333; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; transform: rotate(-5deg); position: relative; overflow: hidden;">
+            <div style="position: absolute; top: 0; width: 50%; height: 12px; background: #333; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;"></div>
+            <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'><rect width='64' height='64' rx='14' fill='#141414'/><text x='32' y='42' font-family='Georgia,serif' font-size='34' fill='#FBFAF8' text-anchor='middle' letter-spacing='1'>S</text></svg>
+          </div>
+          <div style="width: 140px; height: 280px; background: #000; border: 4px solid #333; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; transform: rotate(5deg) translateY(20px); position: relative; overflow: hidden; opacity: 0.8;">
+             <div style="position: absolute; top: 0; width: 50%; height: 12px; background: #333; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;"></div>
+             <div style="width: 80%; height: 12px; background: #222; border-radius: 4px; position: absolute; top: 40px; left: 10%;"></div>
+             <div style="width: 60%; height: 12px; background: #222; border-radius: 4px; position: absolute; top: 60px; left: 10%;"></div>
+             <div style="width: 80%; height: 100px; background: #222; border-radius: 8px; position: absolute; top: 90px; left: 10%;"></div>
+          </div>
+        </div>
+        <div style="position: absolute; right: -5%; bottom: -25%; font-size: 25rem; color: rgba(255,255,255,0.02); font-family: Georgia, serif; line-height: 1; z-index: 1;">S</div>
+      </div>
+    </section>
+
     <div class="marquee" aria-hidden="true"><div class="marquee-track">
       ${Array(2).fill(`<span>Complimentary shipping over ₹1,499</span><span>Cash on Delivery across India</span><span>7-day easy returns</span><span>New drops every week</span><span>Honest fabrics, fair prices</span>`).join("")}
     </div></div>

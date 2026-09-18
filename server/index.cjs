@@ -22,7 +22,9 @@ const ROOT = path.join(__dirname, "..");
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch { /* read-only serverless FS */ }
 
+const compression = require("compression");
 const app = express();
+app.use(compression());
 app.use(express.json({ limit: "1mb" }));
 // Storefront data changes from the admin — never let browsers cache API JSON.
 app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
@@ -935,7 +937,7 @@ app.use("/admin", express.static(path.join(ROOT, "admin")));
 app.get("/admin", (req, res) => res.sendFile(path.join(ROOT, "admin", "index.html")));
 for (const dir of ["css", "js", "assets"]) {
   // No stale-code surprises: browsers revalidate every time (cheap 304s via ETag).
-  app.use("/" + dir, express.static(path.join(ROOT, dir), { maxAge: 0, etag: true }));
+  app.use("/" + dir, express.static(path.join(ROOT, dir), { maxAge: "30d", etag: true }));
 }
 app.get("/robots.txt", (req, res) => res.sendFile(path.join(ROOT, "robots.txt")));
 app.get("/sitemap.xml", (req, res) => res.sendFile(path.join(ROOT, "sitemap.xml")));
