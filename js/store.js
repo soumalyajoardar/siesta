@@ -408,19 +408,42 @@ export function deliveryInfo(o) {
     return { kind: "delivered", headline: "Delivered", detail: "Delivered on " + fmtDay(at), date: at, daysLeft: 0 };
   }
   
-  let target;
-  if (o.express && typeof o.express === "object" && o.express.option) {
-    target = new Date(o.createdAt).getTime() + (o.express.option === "tomorrow" ? 1 : 0) * DAY_MS;
-  } else {
-    target = new Date(o.createdAt).getTime() + (o.express ? 2 : 5) * DAY_MS;
-  }
-  
   if (o.status === "out_for_delivery") {
     return { kind: "active", headline: "Arriving today", detail: "Out for delivery today", date: Date.now(), daysLeft: 0 };
   }
 
-  const daysLeft = Math.ceil((startOfDay(target) - startOfDay(Date.now())) / DAY_MS);
-  const headline = daysLeft > 1 ? `Arriving in ${daysLeft} days` : daysLeft === 1 ? "Arriving tomorrow" : daysLeft === 0 ? "Arriving today" : "Delayed — arriving soon";
+  let target;
+  let headline = "";
+  
+  if (o.express && typeof o.express === "object" && o.express.option) {
+    const cd = new Date(o.createdAt);
+    target = startOfDay(cd.getTime());
+    
+    if (o.express.option === "tomorrow") {
+      target += DAY_MS;
+    } else if (o.express.option === "today") {
+      if (cd.getHours() === 23 && cd.getMinutes() >= 1) {
+        target += DAY_MS;
+      }
+    }
+    
+    const daysLeft = Math.ceil((target - startOfDay(Date.now())) / DAY_MS);
+    if (daysLeft < 0) {
+      headline = "Delayed — arriving soon";
+    } else {
+      const now = new Date();
+      const isSameNight = (now.getTime() < target && now.getDate() === cd.getDate() && o.express.option === "today");
+      if (isSameNight || daysLeft === 0) headline = "Arriving today";
+      else if (daysLeft === 1) headline = "Arriving tomorrow";
+      else headline = `Arriving in ${daysLeft} days`;
+    }
+  } else {
+    target = startOfDay(new Date(o.createdAt).getTime()) + (o.express ? 2 : 5) * DAY_MS;
+    const daysLeft = Math.ceil((target - startOfDay(Date.now())) / DAY_MS);
+    headline = daysLeft > 1 ? `Arriving in ${daysLeft} days` : daysLeft === 1 ? "Arriving tomorrow" : daysLeft === 0 ? "Arriving today" : "Delayed — arriving soon";
+  }
+
+  const daysLeft = Math.ceil((target - startOfDay(Date.now())) / DAY_MS);
   const detail = "Estimated delivery " + fmtDay(target) + (o.express ? " · express" : "");
   return { kind: daysLeft < 0 ? "delayed" : "active", headline, detail, date: target, daysLeft };
 }
