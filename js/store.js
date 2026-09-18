@@ -99,8 +99,9 @@ const makeSalt = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) =
 import { apiHealth, authRegister, authLogin, authMe, authUpdate, authPassword, authAddresses, getToken, setToken, clearToken } from "./api.js";
 
 let meCache = { at: 0, user: null };
+let hasPulledState = false;
 const ME_TTL = 60 * 1000;
-const dropCache = () => { meCache = { at: 0, user: null }; };
+const dropCache = () => { meCache = { at: 0, user: null }; hasPulledState = false; };
 
 export function getUsers() { return read(K.users, []); }
 function currentUserLocal() {
@@ -119,6 +120,22 @@ export async function currentUser() {
       try {
         const data = await authMe();
         meCache = { at: Date.now(), user: data.user };
+        if (!hasPulledState) {
+          hasPulledState = true;
+          if (Array.isArray(data.addresses) && data.addresses.length) swrite(K.addrs, data.addresses);
+          const merged = [...getCart()];
+          for (const l of Array.isArray(data.cart) ? data.cart : []) {
+            const p = l && productById(l.id);
+            if (!p || !p.sizes.includes(l.size)) continue;
+            const ex = merged.find((x) => x.id === l.id && x.size === l.size && x.color === l.color);
+            if (ex) ex.qty = Math.min(10, ex.qty + Math.min(10, Number(l.qty) || 1));
+            else if (merged.length < 50) merged.push({ id: l.id, size: l.size, color: l.color || p.colors[0].name, qty: Math.min(10, Number(l.qty) || 1) });
+          }
+          swrite(K.cart, merged);
+          swrite(K.wish, [...new Set([...getWish(), ...((Array.isArray(data.wishlist) ? data.wishlist : []).filter((id) => productById(id)))])]);
+          if (!getAddrs().length) pushState();
+          emit();
+        }
         return data.user;
       } catch (e) {
         if (e.status === 401) { clearToken(); dropCache(); endSessionScope(); clearPersistentPII(); emit(); return null; }
