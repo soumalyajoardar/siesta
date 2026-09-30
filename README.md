@@ -86,8 +86,8 @@ keyboard `Arrow/Enter` navigation → `/shop?q=` or `/product/:id`.
 - Size-guide table, sticky buy bar (`IntersectionObserver`)
 - Related (4) + Recently viewed (8), per-PDP JSON-LD
 - Reviews: `GET /api/products/:id/reviews`; write only if delivered
-  (`GET /api/reviews/eligibility/:id` → modal). Admin can auto-generate
-  10–30 sample reviews on product edit.
+  (`GET /api/reviews/eligibility/:id` → modal). Only real verified-purchase
+  reviews are ever shown — no seeded or generated content.
 
 ### Cart / Checkout / Orders (`js/pages/commerce.js`, `js/store.js:totals`)
 
@@ -257,8 +257,8 @@ Client compresses uploads (`gif|<400KB` passthrough, else `max1400px WebP@0.82`)
   low-stock (`≤5`), by-status, recent orders, restock shortcut into product editor
 - **Products** — search, table (thumb/name/gender/category/price/MRP/stock/status),
   Add/Edit/Delete. Editor: name/category/gender/price/MRP/stock/sizes/colors
-  (`Name:#hex`)/material/desc/care/details/`isNew`/bestseller/auto-reviews
-  (10–30 sample ~4.3 avg), image grid (first = Cover), upload + paste URL,
+  (`Name:#hex`)/material/desc/care/details/`isNew`/bestseller,
+  image grid (first = Cover), upload + paste URL,
   `Copy AI Image Prompt`
 - **Orders** — tabs `all/pending/delivered/cancelled`, address/items/cancel-feedback/
   total (COD + coupon + Express pill), status select `confirmed…cancelled` + Delete.
@@ -341,14 +341,12 @@ do not accept real money this way.
 
 ## Ops / maintenance scripts (root `*.cjs`)
 
-- `add_reviews.cjs` — raw `fs` on `server/data/products.json` + `reviews.json`,
-  fill to 20/product, weighted ratings, Indian names, last-180d, `rev_*` ids
-- `seed_reviews.cjs` — same via `server/store.cjs:getProducts/getReviews/saveReviews`
-  (backend-agnostic)
-- `seed_reviews2.cjs` — filter out `rev_*`, then 10–30/product with titles,
-  forces `avg ≥ 3.9`
 - `update_server.cjs` — one-shot patcher for `server/index.cjs`
   (delivery-automation timeline patch, now superseded — automation removed)
+
+All reviews on the store are real verified-purchase reviews only. There are
+no review-seeding scripts and no auto-generated ratings anywhere in the
+codebase — products show a rating only once real reviews exist.
 
 Gitignored (runtime, not committed): `node_modules/`, `.env`,
 `server/data/*.json` (except `.gitkeep`), `server/uploads/*`, `images/*`.
@@ -375,8 +373,8 @@ Committed: code + `admin/*`, `assets/og-cover.svg`, `*.cjs` scripts,
 - Reviews: eligible from delivered orders only; recent via `GET /api/reviews/recent`
 - Support: `/contact` → ticket → `Admin → Messages` reply/close
 - Cookie banner: Accept / Reject / Manage → footer `Cookie preferences`
-- Admin: `admin` login → Overview → Products (upload ≤5MB, cover ordering,
-  auto-reviews) → Orders (advance/cancel with reason) → Coupons/Media/Settings/Maintenance
+- Admin: `admin` login → Overview → Products (upload ≤5MB, cover ordering)
+  → Orders (advance/cancel with reason) → Coupons/Media/Settings/Maintenance
 
 ## Architecture
 

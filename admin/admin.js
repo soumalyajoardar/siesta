@@ -277,7 +277,7 @@ Style: premium, minimal, modern, photorealistic, sophisticated commercial fashio
         colors: colors.length ? colors : [{ name: "Default", hex: "#999999" }],
         material: fd.get("material"), care: fd.get("care"), desc: fd.get("desc"),
         details: String(fd.get("details")).split("\n").map((s) => s.trim()).filter(Boolean),
-        isNew: !!fd.get("isNew"), bestseller: !!fd.get("bestseller"), autoReviews: !!fd.get("autoReviews"), images,
+        isNew: !!fd.get("isNew"), bestseller: !!fd.get("bestseller"), images,
       };
       try {
         if (id) await api("/api/admin/products/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(body) });
